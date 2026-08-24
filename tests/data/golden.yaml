@@ -1,0 +1,446 @@
+# Golden corpus — the M0 kill-gate.
+#
+# Written before the classifier. These triples are the specification; writing
+# them afterwards means writing them to fit whatever the code happens to do.
+#
+# Each case names a lexeme and a paradigm cell, the string a learner typed, and
+# the class the grader must return. `partner` supplies the aspect partner's lemma
+# where the case tests aspect, because M0 has no lexicon to look one up in.
+#
+# Gate: >= 60 cases, >= 5 per class, >= 95% overall, >= 80% within every class.
+
+# ---------------------------------------------------------------- CORRECT
+- id: correct-m3-acc-is-nom
+  lemma: sklep
+  cell: {number: sg, case: acc}
+  submitted: sklep
+  expect: CORRECT
+  note: m3 accusative is syncretic with the nominative.
+
+- id: correct-m2-acc-is-gen
+  lemma: kot:Sm2
+  cell: {number: sg, case: acc}
+  submitted: kota
+  expect: CORRECT
+  note: >
+    The tag is subst:sg:gen.acc:m2 — one interpretation covering both cases.
+    Only set intersection accepts this; equality would call it CASE_WRONG.
+
+- id: correct-fem-acc
+  lemma: kawa
+  cell: {number: sg, case: acc}
+  submitted: kawę
+  expect: CORRECT
+
+- id: correct-fem-acc-ksiazka
+  lemma: książka
+  cell: {number: sg, case: acc}
+  submitted: książkę
+  expect: CORRECT
+
+- id: correct-neuter-acc
+  lemma: okno
+  cell: {number: sg, case: acc}
+  submitted: okno
+  expect: CORRECT
+
+- id: correct-nominative
+  lemma: dom
+  cell: {number: sg, case: nom}
+  submitted: dom
+  expect: CORRECT
+
+- id: correct-after-normalisation
+  lemma: sklep
+  cell: {number: sg, case: acc}
+  submitted: "  Sklep  "
+  expect: CORRECT
+  note: Step 0 normalises whitespace and case, and nothing else.
+
+# ---------------------------------------------------------------- ANIMACY
+- id: animacy-nom-for-animate-kot
+  lemma: kot:Sm2
+  cell: {number: sg, case: acc}
+  submitted: kot
+  expect: ANIMACY
+  note: The masculine accusative trap, and the first hard concept in the course.
+
+- id: animacy-nom-for-animate-pies
+  lemma: pies
+  cell: {number: sg, case: acc}
+  submitted: pies
+  expect: ANIMACY
+
+- id: animacy-nom-for-animate-ptak
+  lemma: ptak
+  cell: {number: sg, case: acc}
+  submitted: ptak
+  expect: ANIMACY
+
+- id: animacy-gen-for-inanimate-stol
+  lemma: stół
+  cell: {number: sg, case: acc}
+  submitted: stołu
+  expect: ANIMACY
+  note: The same misconception with the opposite sign — animate rule over-applied.
+
+- id: animacy-gen-for-inanimate-sklep
+  lemma: sklep
+  cell: {number: sg, case: acc}
+  submitted: sklepu
+  expect: ANIMACY
+
+- id: animacy-gen-for-inanimate-dom
+  lemma: dom
+  cell: {number: sg, case: acc}
+  submitted: domu
+  expect: ANIMACY
+
+- id: animacy-gen-for-inanimate-samochod
+  lemma: samochód
+  cell: {number: sg, case: acc}
+  submitted: samochodu
+  expect: ANIMACY
+  note: Genitive here also carries the ó/o alternation, and is still a real form.
+
+# ---------------------------------------------------------------- CASE_WRONG
+- id: case-gen-for-acc-fem
+  lemma: kawa
+  cell: {number: sg, case: acc}
+  submitted: kawy
+  expect: CASE_WRONG
+  note: Feminine, so the animacy rule must not fire.
+
+- id: case-dat-for-acc-fem
+  lemma: książka
+  cell: {number: sg, case: acc}
+  submitted: książce
+  expect: CASE_WRONG
+
+- id: case-nom-for-acc-matka
+  lemma: matka
+  cell: {number: sg, case: acc}
+  submitted: matka
+  expect: CASE_WRONG
+  note: >
+    A dropped ogonek that lands on another real form of the same lexeme is a case
+    error, not a spelling slip. This is why step 2 precedes step 3.
+
+- id: case-loc-for-gen-sklep
+  lemma: sklep
+  cell: {number: sg, case: gen}
+  submitted: sklepie
+  expect: CASE_WRONG
+  note: Fails the pattern card; the morphological card must stay untouched.
+
+- id: case-dat-for-gen-neuter
+  lemma: okno
+  cell: {number: sg, case: gen}
+  submitted: oknu
+  expect: CASE_WRONG
+
+- id: case-gen-for-loc-krakow
+  lemma: Kraków
+  cell: {number: sg, case: loc}
+  submitted: Krakowa
+  expect: CASE_WRONG
+
+- id: case-loc-for-inst-fem
+  lemma: kawa
+  cell: {number: sg, case: inst}
+  submitted: kawie
+  expect: CASE_WRONG
+
+# ---------------------------------------------------------------- NUMBER_WRONG
+- id: number-pl-for-sg-gen-sklep
+  lemma: sklep
+  cell: {number: sg, case: gen}
+  submitted: sklepów
+  expect: NUMBER_WRONG
+
+- id: number-pl-for-sg-gen-stol
+  lemma: stół
+  cell: {number: sg, case: gen}
+  submitted: stołów
+  expect: NUMBER_WRONG
+
+- id: number-pl-for-sg-gen-okno
+  lemma: okno
+  cell: {number: sg, case: gen}
+  submitted: okien
+  expect: NUMBER_WRONG
+
+- id: number-pl-for-sg-dat-matka
+  lemma: matka
+  cell: {number: sg, case: dat}
+  submitted: matkom
+  expect: NUMBER_WRONG
+
+- id: number-pl-for-sg-acc-kot
+  lemma: kot:Sm2
+  cell: {number: sg, case: acc}
+  submitted: koty
+  expect: NUMBER_WRONG
+  note: >
+    Case agrees (plural accusative of an m2 noun is syncretic with the
+    nominative), so only number differs. Tests attribute priority directly.
+
+- id: number-pl-for-sg-loc-dom
+  lemma: dom
+  cell: {number: sg, case: loc}
+  submitted: domach
+  expect: NUMBER_WRONG
+
+- id: number-pl-for-sg-gen-ksiazka
+  lemma: książka
+  cell: {number: sg, case: gen}
+  submitted: książek
+  expect: NUMBER_WRONG
+
+# ------------------------------------------------------- GENDER_AGREEMENT
+- id: gender-fem-for-m3-acc
+  lemma: duży
+  cell: {number: sg, case: acc, gender: m3, degree: pos}
+  submitted: dużą
+  expect: GENDER_AGREEMENT
+
+- id: gender-masc-for-fem-acc
+  lemma: duży
+  cell: {number: sg, case: acc, gender: f, degree: pos}
+  submitted: duży
+  expect: GENDER_AGREEMENT
+
+- id: gender-masc-for-neuter-acc
+  lemma: nowy
+  cell: {number: sg, case: acc, gender: n, degree: pos}
+  submitted: nowego
+  expect: GENDER_AGREEMENT
+
+- id: gender-masc-for-fem-nom
+  lemma: dobry
+  cell: {number: sg, case: nom, gender: f, degree: pos}
+  submitted: dobry
+  expect: GENDER_AGREEMENT
+
+- id: gender-fem-for-neuter-nom
+  lemma: mały
+  cell: {number: sg, case: nom, gender: n, degree: pos}
+  submitted: mała
+  expect: GENDER_AGREEMENT
+
+- id: gender-fem-for-m3-acc-dobry
+  lemma: dobry
+  cell: {number: sg, case: acc, gender: m3, degree: pos}
+  submitted: dobrą
+  expect: GENDER_AGREEMENT
+
+# ------------------------------------------- CASE_RIGHT_FORM_WRONG
+- id: paradigm-a-for-u-genitive
+  lemma: sklep
+  cell: {number: sg, case: gen}
+  submitted: sklepa
+  expect: CASE_RIGHT_FORM_WRONG
+  note: >
+    The -a genitive over-applied to a -u noun. Genitive *was* chosen correctly,
+    so the pattern card passes and only the morphological card fails.
+
+- id: paradigm-alternation-krakow
+  lemma: Kraków
+  cell: {number: sg, case: loc}
+  submitted: Krakówie
+  expect: CASE_RIGHT_FORM_WRONG
+  note: >
+    Criterion 4b. o->ó is the REVERSE of an ASCII fold, so step 3 must not fire.
+    Revision 1 of the design listed o/ó as a bidirectional diacritic pair, which
+    classified this as ORTHOGRAPHY and did not fail the grammar card.
+
+- id: paradigm-alternation-stol
+  lemma: stół
+  cell: {number: sg, case: gen}
+  submitted: stółu
+  expect: CASE_RIGHT_FORM_WRONG
+  note: Criterion 4b. The ó/o alternation left unapplied.
+
+- id: paradigm-alternation-samochod
+  lemma: samochód
+  cell: {number: sg, case: gen}
+  submitted: samochódu
+  expect: CASE_RIGHT_FORM_WRONG
+  note: Criterion 4b.
+
+- id: paradigm-mobile-e-pies
+  lemma: pies
+  cell: {number: sg, case: gen}
+  submitted: piesa
+  expect: CASE_RIGHT_FORM_WRONG
+  note: The mobile-e alternation regularised away — a real and common learner error.
+
+- id: paradigm-y-for-i-matka
+  lemma: matka
+  cell: {number: sg, case: gen}
+  submitted: matky
+  expect: CASE_RIGHT_FORM_WRONG
+
+- id: paradigm-invented-neuter-genitive
+  lemma: okno
+  cell: {number: sg, case: gen}
+  submitted: oknia
+  expect: CASE_RIGHT_FORM_WRONG
+
+# ---------------------------------------------------------------- ORTHOGRAPHY
+- id: ortho-ogonek-dropped-kawa
+  lemma: kawa
+  cell: {number: sg, case: acc}
+  submitted: kawe
+  expect: ORTHOGRAPHY
+
+- id: ortho-two-folds-ksiazka
+  lemma: książka
+  cell: {number: sg, case: acc}
+  submitted: ksiazke
+  expect: ORTHOGRAPHY
+
+- id: ortho-ogonek-dropped-matka
+  lemma: matka
+  cell: {number: sg, case: acc}
+  submitted: matke
+  expect: ORTHOGRAPHY
+  note: >
+    Genuinely ambiguous — the ogonek IS the accusative ending — and resolved
+    leniently by design. The cost is recorded in the design document.
+
+- id: ortho-kreska-dropped-krakow
+  lemma: Kraków
+  cell: {number: sg, case: nom}
+  submitted: Krakow
+  expect: ORTHOGRAPHY
+  note: ó->o IS a fold in the learner's direction, unlike Krakówie above.
+
+- id: ortho-two-folds-stol
+  lemma: stół
+  cell: {number: sg, case: nom}
+  submitted: stol
+  expect: ORTHOGRAPHY
+
+- id: ortho-one-of-two-folds
+  lemma: książka
+  cell: {number: sg, case: nom}
+  submitted: ksiażka
+  expect: ORTHOGRAPHY
+
+- id: ortho-homophone-u-for-o-kreska
+  lemma: córka
+  cell: {number: sg, case: nom}
+  submitted: curka
+  expect: ORTHOGRAPHY
+  note: u/ó is a true homophone pair and stays bidirectional.
+
+# ---------------------------------------------------------------- LEXICAL
+- id: lexical-different-noun-dom
+  lemma: sklep
+  cell: {number: sg, case: acc}
+  submitted: dom
+  expect: LEXICAL
+
+- id: lexical-herbata-for-kawa
+  lemma: kawa
+  cell: {number: sg, case: acc}
+  submitted: herbatę
+  expect: LEXICAL
+
+- id: lexical-pies-for-kot
+  lemma: kot:Sm2
+  cell: {number: sg, case: acc}
+  submitted: psa
+  expect: LEXICAL
+
+- id: lexical-gazeta-for-ksiazka
+  lemma: książka
+  cell: {number: sg, case: acc}
+  submitted: gazetę
+  expect: LEXICAL
+
+- id: lexical-ojciec-for-matka
+  lemma: matka
+  cell: {number: sg, case: acc}
+  submitted: ojca
+  expect: LEXICAL
+
+- id: lexical-krzeslo-for-stol
+  lemma: stół
+  cell: {number: sg, case: acc}
+  submitted: krzesło
+  expect: LEXICAL
+
+# ---------------------------------------------------------------- UNANALYSABLE
+- id: unanalysable-latin-keyboard-mash
+  lemma: sklep
+  cell: {number: sg, case: gen}
+  submitted: qwerty
+  expect: UNANALYSABLE
+
+- id: unanalysable-nonsense-kawa
+  lemma: kawa
+  cell: {number: sg, case: acc}
+  submitted: xyzzy
+  expect: UNANALYSABLE
+
+- id: unanalysable-nonsense-kot
+  lemma: kot:Sm2
+  cell: {number: sg, case: acc}
+  submitted: blahblah
+  expect: UNANALYSABLE
+
+- id: unanalysable-nonsense-ksiazka
+  lemma: książka
+  cell: {number: sg, case: acc}
+  submitted: zzzzzz
+  expect: UNANALYSABLE
+
+- id: unanalysable-nonsense-okno
+  lemma: okno
+  cell: {number: sg, case: gen}
+  submitted: grumpf
+  expect: UNANALYSABLE
+
+- id: unanalysable-nonsense-matka
+  lemma: matka
+  cell: {number: sg, case: gen}
+  submitted: asdfgh
+  expect: UNANALYSABLE
+
+# ---------------------------------------------------------------- ASPECT_WRONG
+- id: aspect-imperf-for-perf-inf
+  lemma: zrobić
+  cell: {pos: inf, aspect: perf}
+  submitted: robić
+  partner: robić
+  expect: ASPECT_WRONG
+
+- id: aspect-perf-for-imperf-present
+  lemma: robić
+  cell: {number: sg, person: pri, aspect: imperf}
+  submitted: zrobię
+  partner: zrobić
+  expect: ASPECT_WRONG
+
+- id: aspect-imperf-for-perf-napisac
+  lemma: napisać
+  cell: {pos: inf, aspect: perf}
+  submitted: pisać
+  partner: pisać
+  expect: ASPECT_WRONG
+
+- id: aspect-perf-for-imperf-czytac
+  lemma: czytać
+  cell: {number: sg, person: pri, aspect: imperf}
+  submitted: przeczytam
+  partner: przeczytać
+  expect: ASPECT_WRONG
+
+- id: aspect-imperf-for-perf-przeczytac
+  lemma: przeczytać
+  cell: {pos: inf, aspect: perf}
+  submitted: czytać
+  partner: czytać
+  expect: ASPECT_WRONG

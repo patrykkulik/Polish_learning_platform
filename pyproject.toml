@@ -1,0 +1,23 @@
+[project]
+name = "polish-learning-platform"
+version = "0.1.0"
+description = "Morphology-first Polish course. M0: grammar-aware grading and error diagnosis."
+requires-python = ">=3.12"
+dependencies = [
+    # Floor is the release verified to publish cp310-abi3 wheels for
+    # macosx_11_0_universal2 and manylinux_2_28_x86_64. There is no sdist and no
+    # linux/arm64 wheel, so on an unsupported platform pip cannot fall back to a
+    # build — the install fails outright. Pin runner and image to x86-64 or arm64
+    # macOS accordingly.
+    "morfeusz2>=1.99.15",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
