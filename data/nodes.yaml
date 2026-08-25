@@ -1,0 +1,87 @@
+# The M1 skill graph: a DAG, not a tree.
+#
+# `genders` on a grammar node selects which paradigm classes become pattern
+# strata under it. The accusative splits three ways because the ending depends on
+# gender and animacy — and the masculine animate node is deliberately downstream
+# of the other two, because it is the first genuinely hard concept in the course
+# and should not be met cold.
+
+- key: V01
+  type: vocabulary
+  title: Everyday nouns
+  cefr_level: A1
+  prereqs: []
+  explanation_md: |
+    Polish nouns carry gender, and gender decides how the noun changes when its
+    job in the sentence changes. Learn the word and its gender together — they
+    are one fact, not two.
+
+- key: N01
+  type: grammar
+  title: Gender and the nominative singular
+  cefr_level: A1
+  prereqs: [V01]
+  rule_key: NOM_SG
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    The **nominative** is the dictionary form — the form a noun takes when it is
+    the subject. Most nouns wear their gender on the ending: `-a` is almost
+    always feminine, a consonant is almost always masculine, `-o` and `-e` are
+    neuter.
+
+- key: N02
+  type: grammar
+  title: Naming things — to jest
+  cefr_level: A1
+  prereqs: [N01]
+  rule_key: NOM_PREDICATE
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    `To jest…` — *this is…* — takes the nominative, whatever the gender. `To` does
+    not change to agree with anything.
+
+- key: N03
+  type: grammar
+  title: Accusative singular — feminine
+  cefr_level: A1
+  prereqs: [N01]
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  genders: [f]
+  explanation_md: |
+    The **accusative** marks the direct object — the thing the verb acts on.
+    Feminine nouns in `-a` take `-ę`: *kawa* → **kawę**.
+
+- key: N04
+  type: grammar
+  title: Accusative singular — masculine inanimate and neuter
+  cefr_level: A1
+  prereqs: [N01]
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  genders: [m3, n]
+  explanation_md: |
+    Masculine **inanimate** nouns and all neuters look identical in the
+    accusative and the nominative. Nothing changes: *Widzę **sklep***.
+
+- key: N05
+  type: grammar
+  title: Accusative singular — masculine animate
+  cefr_level: A1
+  prereqs: [N03, N04]
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  genders: [m1, m2]
+  explanation_md: |
+    This is the one that catches everybody. A masculine noun that is **alive** —
+    a person or an animal — borrows the *genitive* for its accusative:
+    *kot* → **kota**, *pies* → **psa**.
+
+    So *Widzę sklep* but *Widzę kota*. Same sentence shape, different ending,
+    and the only thing that decides it is whether the noun is animate.
+
+- key: N06
+  type: function
+  title: Saying what you have and what you see
+  cefr_level: A1
+  prereqs: [N02, N05]
+  explanation_md: |
+    Putting it together: naming something, then saying you have it or see it.
+    Nothing new here — this composes what N02 and N03–N05 already taught.

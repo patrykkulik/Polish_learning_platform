@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 148 passing | — |
+| Test suite | 165 passing | — |
 
 Measured while proving it:
 
@@ -29,10 +29,28 @@ Measured while proving it:
   of magnitude inside that, which is why there is no sidecar and no cache.
 - 8 threads × 400 mixed analyse/generate calls: no errors.
 
+**M1 — the learning loop.** Single user, no auth. 44 lexemes, nominative and
+accusative, three exercise types, FSRS over three card populations, session
+composition, streak, and a review screen. 352 items, generated with no LLM and
+no human review.
+
 ## Quick start
 
 ```bash
 uv sync && uv run pytest
+```
+
+Build the curriculum and run the app:
+
+```bash
+uv run python -m pl.content.ingest && uv run uvicorn pl.api:app --port 8117
+```
+
+Then open http://localhost:8117. SQLite is the default so this needs no daemon;
+Postgres is the deployment target and is selected with `DATABASE_URL`:
+
+```bash
+DATABASE_URL=postgresql+psycopg://polish:polish@localhost:5432/polish uv run python -m pl.content.ingest
 ```
 
 Python 3.12 is pinned. `morfeusz2` ships prebuilt `abi3` wheels for macOS
@@ -88,16 +106,53 @@ concept in the course — would be reported as a case error.
 
 At M1 these route to different cards — the first fails the pattern card and
 leaves the morphological card's schedule untouched; the second fails the
-morphological card while the pattern card *passes*.
+morphological card while the pattern card *passes*. The review screen shows
+which cards an answer moved, and which it deliberately did not:
+
+```
+ANIMACY
+kot is animate, so its accusative borrows the genitive: kota.
+  the rule · Again    this word's form · untouched    vocabulary · untouched
+```
+
+### Pattern cards are stratified, and the key is derived
+
+A pattern card is scheduled against **(rule, paradigm class)**, not against the
+rule alone, so every draw within a card is homogeneous in difficulty — which is
+what FSRS assumes and what a random draw across the whole vocabulary would break.
+
+`paradigm_class` is derived from the lexeme's own generated endings, never from
+gender. Gender predicts the accusative and nothing past it:
+
+| | gender | genitive |
+|---|---|---|
+| `sklep`, `dom`, `rower` | m3 | `-u` |
+| `chleb`, `ser` | m3 | `-a` |
+
+A gender-keyed stratum would look correct for the whole of M1 and silently mix
+difficulties from M2 onward. Deriving it costs one function and a re-ingest when
+the curriculum grows; getting it wrong would be invisible until the genitive.
 
 ## Layout
 
 ```
-pl/tags.py          tag strings -> comparable feature records
-pl/domain.py        frozen value types; ExpectedSlot carries its own paradigm
-pl/morph.py         the only module importing morfeusz2
+pl/tags.py            tag strings -> comparable feature records
+pl/domain.py          frozen value types; ExpectedSlot carries its own paradigm
+pl/morph.py           the only module importing morfeusz2
 pl/grade/classify.py  the six steps
 pl/grade/explain.py   diagnosis -> a sentence naming the decision
+
+pl/models.py          schema, in path B's shape
+pl/content/ingest.py  data files + Morfeusz -> lexemes, forms, nodes, strata
+pl/content/frames.py  frames x lexemes -> items
+pl/schedule.py        FSRS, and the error-class -> card routing table
+pl/session.py         debt -> remediation -> new, and the unlock gate
+pl/streak.py          both conditions, in the learner's own timezone
+pl/api.py             JSON API; grading never runs in the browser
+
+data/lexemes.yaml     44 nouns, hand-curated, theme-driven
+data/nodes.yaml       the skill DAG
+data/frames.yaml      9 authored frames
 tests/data/golden.yaml  the kill-gate corpus
 ```
 

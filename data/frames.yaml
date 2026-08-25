@@ -1,0 +1,83 @@
+# Authored frames. Items are frames x lexemes, resolved against the form table.
+#
+# No LLM is involved and no item is reviewed by hand: the expected surface is
+# *looked up*, not written, so it cannot be wrong unless SGJP is wrong. That is
+# what makes a few hundred items free at M1. Creative sentences serve
+# communicative context, which is an M2 need, not a morphology-drilling one.
+#
+# `rule_key` plus the lexeme's derived paradigm_class resolves the pattern, and
+# the pattern carries the node — so a frame does not name a node and does not
+# need to know that the accusative splits three ways.
+
+- key: TO_JEST
+  exercise_type: cloze
+  template: "To jest ___."
+  gloss: "This is a {gloss}."
+  case: nom
+  rule_key: NOM_PREDICATE
+
+- key: TU_JEST
+  exercise_type: cloze
+  template: "Tu jest ___."
+  gloss: "Here is a {gloss}."
+  case: nom
+  rule_key: NOM_PREDICATE
+
+- key: WIDZE
+  exercise_type: cloze
+  template: "Widzę ___."
+  gloss: "I see a {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+- key: MAM
+  exercise_type: cloze
+  template: "Mam ___."
+  gloss: "I have a {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+- key: LUBIE
+  exercise_type: cloze
+  template: "Lubię ___."
+  gloss: "I like {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+- key: KUPUJE
+  exercise_type: cloze
+  template: "Kupuję ___."
+  gloss: "I am buying a {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+# The preposition drill. `czekać na` governs the accusative regardless of what
+# follows it, which makes it the cleanest vehicle in the M1 vocabulary for
+# drilling government independently of the verb.
+- key: CZEKAM_NA
+  exercise_type: prep_drill
+  template: "Czekam na ___."
+  gloss: "I am waiting for the {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+# Multiple choice over forms: low-stakes first exposure to a stratum. Distractors
+# are other real cells of the same lexeme, so a learner who guesses by shape
+# rather than by rule gets it wrong.
+- key: MCQ_ACC
+  exercise_type: mcq
+  template: "Widzę ___."
+  gloss: "I see a {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  distractor_cases: [nom, gen, loc]
+
+# Multiple choice over meaning. Sits under the vocabulary node, so it scores the
+# lexical card — the only vehicle at M1 that tests knowing the word rather than
+# inflecting it.
+- key: MCQ_MEANING
+  exercise_type: mcq
+  template: "Which word means “{gloss}”?"
+  case: nom
+  vocabulary: true
+  distractor_lexemes: 3

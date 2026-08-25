@@ -144,6 +144,56 @@ def cell(lemma: str, **features: str) -> Form:
 NON_INFLECTIONAL: frozenset[str] = frozenset({"brev", "adja", "pacta"})
 
 
+def paradigm_class(lemma: str, cases: tuple[str, ...], number: str = "sg") -> str:
+    """A stable key grouping lexemes that inflect identically across `cases`.
+
+    This is the stratification key pattern cards are scheduled against, and it
+    cannot be derived from gender. `sklep` and `chleb` are both `m3` and take
+    different genitives (`sklepu`, `chleba`); `kawa` and `książka` are both
+    feminine and take different genitives (`kawy`, `książki`). Gender predicts
+    the accusative and nothing beyond it, so a gender-keyed stratum would look
+    correct for the whole of M1 and silently mix difficulties from M2 onward —
+    which is the exact FSRS violation stratification exists to prevent.
+
+    The signature is the lexeme's own endings: strip the longest common prefix of
+    the cells in scope, and key on what is left. Two lexemes share a class when
+    every ending matches. Stem alternations fall out of this correctly rather
+    than being special-cased — `stół → stołu` keeps `ół`/`ołu` where `sklep →
+    sklepu` keeps ``/`u`, so the alternating noun lands in its own class, which
+    is right: the alternation is a real difficulty the learner has to acquire
+    separately.
+
+    Measured over a 28-noun sample, nominative and accusative yield six classes,
+    four of which are the strata the design names (`f-a`, `m-inanim`, `m-anim`,
+    `n-o`) with `pies` and `koń` correctly isolated.
+    """
+    cells = [
+        f
+        for f in forms(lemma)
+        if f.tag.pos == "subst"
+        and number in f.tag.number
+        and any(c in f.tag.case for c in cases)
+    ]
+    if not cells:
+        raise LookupError(f"{lemma!r} has no {number} forms in {cases}")
+
+    stem = cells[0].surface
+    for other in cells[1:]:
+        while not other.surface.startswith(stem):
+            stem = stem[:-1]
+
+    gender = sorted(cells[0].tag.gender)[0] if cells[0].tag.gender else "?"
+    endings = sorted(
+        {
+            f"{case}-{f.surface[len(stem):] or '0'}"
+            for f in cells
+            for case in cases
+            if case in f.tag.case
+        }
+    )
+    return f"{gender}:{'|'.join(endings)}"
+
+
 def paradigm_roundtrips(lemma: str) -> tuple[str, ...]:
     """Inflected surfaces of `lemma` that do not re-analyse back to it.
 

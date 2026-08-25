@@ -11,11 +11,25 @@ dependencies = [
     # macOS accordingly.
     "morfeusz2>=1.99.15",
     "pyyaml>=6.0",
+    # Floor is the release verified to expose `Card.stability` as a public
+    # attribute and to preserve it across to_json/from_json. The unlock gate
+    # reads it, so an older release would fail silently rather than loudly.
+    "fsrs>=6.3.2",
+    "sqlalchemy>=2.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "jinja2>=3.1",
 ]
+
+[project.optional-dependencies]
+# Postgres is the deployment target; SQLite runs the loop locally with no
+# daemon. Kept optional so the project installs without a running Docker.
+postgres = ["psycopg[binary]>=3.2"]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
+    "httpx>=0.27",
 ]
 
 [tool.pytest.ini_options]

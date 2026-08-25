@@ -1,0 +1,155 @@
+# The M1 lexeme set: 44 nouns, hand-curated and theme-driven.
+#
+# Frequency is not the ordering principle. Frequency and teachability diverge
+# badly in Polish — the most frequent nouns are disproportionately irregular, and
+# a course that follows a frequency list teaches its hardest morphology first.
+# Themes give the learner sentences that cohere; frequency breaks ties.
+#
+# `lemma` is the full Morfeusz identifier wherever the citation form is
+# ambiguous. `kot` and `pies` each name two lexemes — the animal (m2) and a
+# personal noun (m1) — and they are not interchangeable here: the accusative is
+# the same, but the plural and the whole animacy lesson are not.
+#
+# The set is deliberately weighted to cover every accusative stratum with enough
+# members that a pattern card has lexemes to draw from.
+
+- lemma: kawa
+  gloss: coffee
+  theme: food
+- lemma: herbata
+  gloss: tea
+  theme: food
+- lemma: woda
+  gloss: water
+  theme: food
+- lemma: ryba
+  gloss: fish
+  theme: food
+- lemma: książka
+  gloss: book
+  theme: objects
+- lemma: gazeta
+  gloss: newspaper
+  theme: objects
+- lemma: lampa
+  gloss: lamp
+  theme: home
+- lemma: mapa
+  gloss: map
+  theme: objects
+- lemma: torba
+  gloss: bag
+  theme: objects
+- lemma: koszula
+  gloss: shirt
+  theme: clothes
+- lemma: szkoła
+  gloss: school
+  theme: city
+- lemma: ulica
+  gloss: street
+  theme: city
+- lemma: praca
+  gloss: work
+  theme: city
+- lemma: matka
+  gloss: mother
+  theme: people
+- lemma: córka
+  gloss: daughter
+  theme: people
+- lemma: siostra
+  gloss: sister
+  theme: people
+
+- lemma: sklep
+  gloss: shop
+  theme: city
+- lemma: dom
+  gloss: house
+  theme: home
+- lemma: ogród
+  gloss: garden
+  theme: home
+- lemma: stół
+  gloss: table
+  theme: home
+- lemma: telefon
+  gloss: telephone
+  theme: objects
+- lemma: komputer
+  gloss: computer
+  theme: objects
+- lemma: obraz
+  gloss: picture
+  theme: home
+- lemma: klucz
+  gloss: key
+  theme: objects
+- lemma: rower
+  gloss: bicycle
+  theme: city
+- lemma: samochód
+  gloss: car
+  theme: city
+- lemma: chleb
+  gloss: bread
+  theme: food
+- lemma: ser
+  gloss: cheese
+  theme: food
+
+# Masculine animate. The accusative borrows the genitive here, and this is the
+# concept the whole of N05 exists for.
+- lemma: kot:Sm2
+  gloss: cat
+  theme: animals
+- lemma: pies:Sm2
+  gloss: dog
+  theme: animals
+- lemma: ptak
+  gloss: bird
+  theme: animals
+- lemma: koń:S
+  gloss: horse
+  theme: animals
+
+# Masculine personal. Same accusative rule as the animals, different stratum,
+# because the plural diverges sharply later.
+- lemma: brat
+  gloss: brother
+  theme: people
+- lemma: syn
+  gloss: son
+  theme: people
+- lemma: nauczyciel
+  gloss: teacher
+  theme: people
+- lemma: lekarz
+  gloss: doctor
+  theme: people
+
+- lemma: okno
+  gloss: window
+  theme: home
+- lemma: krzesło
+  gloss: chair
+  theme: home
+- lemma: mieszkanie
+  gloss: flat
+  theme: home
+- lemma: miasto:S
+  gloss: city
+  theme: city
+- lemma: morze
+  gloss: sea
+  theme: nature
+- lemma: jabłko
+  gloss: apple
+  theme: food
+- lemma: mleko
+  gloss: milk
+  theme: food
+- lemma: piwo
+  gloss: beer
+  theme: food
