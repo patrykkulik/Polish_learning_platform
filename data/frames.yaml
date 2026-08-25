@@ -9,6 +9,19 @@
 # the pattern carries the node — so a frame does not name a node and does not
 # need to know that the accusative splits three ways.
 
+# N01's competency is the citation form and the gender that comes with it. The
+# nominative singular *is* the dictionary form, so there is no inflection to
+# drill here — the producible skill is recalling the Polish word at all, in the
+# form the dictionary lists it under. Without this frame N01 has strata and no
+# items, which leaves it permanently unmasterable and every node downstream of
+# it unreachable.
+- key: NOM_CITATION
+  exercise_type: cloze
+  template: "___"
+  gloss: "Write the Polish for “{gloss}”, in its dictionary form."
+  case: nom
+  rule_key: NOM_SG
+
 - key: TO_JEST
   exercise_type: cloze
   template: "To jest ___."

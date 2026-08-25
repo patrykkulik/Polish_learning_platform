@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 165 passing | — |
+| Test suite | 170 passing | — |
 
 Measured while proving it:
 
@@ -31,8 +31,9 @@ Measured while proving it:
 
 **M1 — the learning loop.** Single user, no auth. 44 lexemes, nominative and
 accusative, three exercise types, FSRS over three card populations, session
-composition, streak, and a review screen. 352 items, generated with no LLM and
-no human review.
+composition, streak, and a review screen. 439 items across cloze, form-selection
+multiple choice and a preposition drill — generated with no LLM and no human
+review.
 
 ## Quick start
 
@@ -152,7 +153,7 @@ pl/api.py             JSON API; grading never runs in the browser
 
 data/lexemes.yaml     44 nouns, hand-curated, theme-driven
 data/nodes.yaml       the skill DAG
-data/frames.yaml      9 authored frames
+data/frames.yaml      10 authored frames
 tests/data/golden.yaml  the kill-gate corpus
 ```
 

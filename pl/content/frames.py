@@ -63,10 +63,14 @@ def build_items(db: Session) -> list[Item]:
     glosses = {
         s.lexeme_id: s.en_gloss for s in db.scalars(select(Sense))
     }
-    existing = {
-        (i.prompt, i.expected_answer) for i in db.scalars(select(Item))
+    # Item identity includes the exercise type. Without it a multiple-choice
+    # frame sharing a template and case with a cloze frame — which is exactly
+    # what a form-selection MCQ is — collides with it and is dropped.
+    preexisting = {
+        (i.exercise_type, i.prompt, i.expected_answer)
+        for i in db.scalars(select(Item))
     }
-
+    added: dict[tuple[str, str, str], str] = {}
     created: list[Item] = []
 
     for frame in _frames():
@@ -82,9 +86,22 @@ def build_items(db: Session) -> list[Item]:
 
             if item is None:
                 continue
-            if (item.prompt, item.expected_answer) in existing:
+
+            key = (item.exercise_type, item.prompt, item.expected_answer)
+            # Two frames colliding is an authoring bug and must be loud. A
+            # collision with a row already in the database is just idempotency,
+            # and must stay silent — the two are indistinguishable if you only
+            # track one set, which is how an entire frame went missing before.
+            if key in added:
+                raise AssertionError(
+                    f"frame {frame['key']!r} produces an item identical to one "
+                    f"from frame {added[key]!r}: {key}. Give one of them a "
+                    f"distinct template, case, or exercise type."
+                )
+            if key in preexisting:
                 continue
-            existing.add((item.prompt, item.expected_answer))
+
+            added[key] = frame["key"]
             db.add(item)
             created.append(item)
 

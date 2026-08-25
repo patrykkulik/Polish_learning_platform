@@ -24,6 +24,7 @@ from pl.models import (
     Attempt,
     Card,
     ErrorEvent,
+    Form,
     Item,
     Node,
     NodeLexeme,
@@ -32,7 +33,7 @@ from pl.models import (
     Pattern,
     Sense,
 )
-from pl.schedule import LEXICAL, MORPH, PATTERN
+from pl.schedule import LEXICAL, MORPH, PATTERN, populations_for
 
 #: Days of retention a card must once have reached to count toward mastery.
 MASTERY_STABILITY_DAYS = 7.0
@@ -215,6 +216,50 @@ def _lexeme_of_item(db: Session, item: Item) -> int | None:
     return form.lexeme_id if form else None
 
 
+def _started_referents(db: Session, user_id: int) -> set[tuple[str, int]]:
+    """Every (population, referent) the learner already holds a card for.
+
+    Keyed on the referent rather than on one referent *column*: a lexical card
+    carries `sense_id` and leaves `form_id` null, so reading `form_id` alone
+    reports every vocabulary item as never-seen forever.
+    """
+    started: set[tuple[str, int]] = set()
+    for card in db.scalars(select(Card).where(Card.user_id == user_id)):
+        ref = card.sense_id or card.form_id or card.pattern_id
+        if ref is not None:
+            started.add((card.population, ref))
+    return started
+
+
+def _sense_by_form(db: Session) -> dict[int, int]:
+    """form id -> the sense of its lexeme, so a vocabulary item can name its card."""
+    rows = db.execute(
+        select(Form.id, Sense.id).join(Sense, Sense.lexeme_id == Form.lexeme_id)
+    ).all()
+    return {form_id: sense_id for form_id, sense_id in rows}
+
+
+def _item_referents(
+    node: Node, item: Item, sense_by_form: dict[int, int]
+) -> set[tuple[str, int]]:
+    """The cards this item would score, as (population, referent) pairs.
+
+    Mirrors `schedule.cards_for_item` without creating anything — the same
+    intersection of the routing table with what the node type permits.
+    """
+    allowed = populations_for(node)
+    refs: set[tuple[str, int]] = set()
+    if MORPH in allowed and item.target_form_id is not None:
+        refs.add((MORPH, item.target_form_id))
+    if PATTERN in allowed and item.pattern_id is not None:
+        refs.add((PATTERN, item.pattern_id))
+    if LEXICAL in allowed and item.target_form_id is not None:
+        sense_id = sense_by_form.get(item.target_form_id)
+        if sense_id is not None:
+            refs.add((LEXICAL, sense_id))
+    return refs
+
+
 def weakest_node(db: Session, user_id: int, days: int = 14) -> Node | None:
     """The node with the highest error *rate* over the trailing window.
 
@@ -281,41 +326,43 @@ def build_session(
         weak = weakest_node(db, user_id)
         if weak is not None:
             for item in db.scalars(select(Item).where(Item.node_id == weak.id)):
-                if not add(item):
+                # `add` returns False both when the session is full and when the
+                # item is already picked. Only the first is a reason to stop —
+                # treating the second as one ends remediation on its first
+                # overlap with the debt queue, which is the common case.
+                if len(picked) >= limit:
                     break
+                add(item)
 
     # 3 — new, and only while nothing is overdue
     introduced = 0
     if not due and len(picked) < limit:
-        started_forms = set(
-            db.scalars(
-                select(Card.form_id).where(
-                    Card.user_id == user_id, Card.form_id.isnot(None)
-                )
-            )
-        )
+        started = _started_referents(db, user_id)
+        sense_by_form = _sense_by_form(db)
         # Round-robin across nodes rather than draining them in turn. Node order
         # is arbitrary, and taking one node at a time means the first unlocked
         # node swallows the whole daily cap — a learner would spend day one on
         # vocabulary alone and never reach the grammar the course is *for*.
         pools = [
-            iter(db.scalars(select(Item).where(Item.node_id == node.id)).all())
+            (node, iter(db.scalars(select(Item).where(Item.node_id == node.id)).all()))
             for node in db.scalars(select(Node))
             if is_unlocked(db, user_id, node)
         ]
         while pools and introduced < DAILY_NEW_CAP and len(picked) < limit:
-            for pool in list(pools):
+            for entry in list(pools):
+                node, pool = entry
                 if introduced >= DAILY_NEW_CAP or len(picked) >= limit:
                     break
                 for item in pool:
-                    if item.target_form_id in started_forms:
+                    refs = _item_referents(node, item, sense_by_form)
+                    if refs & started:
                         continue
                     if add(item):
-                        started_forms.add(item.target_form_id)
+                        started |= refs
                         introduced += 1
                     break
                 else:
-                    pools.remove(pool)
+                    pools.remove(entry)
 
     return picked, {
         "debt_total": debt_total,
