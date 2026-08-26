@@ -98,6 +98,14 @@
   .sentence input.wide { width: 100%; }
   .sentence input:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
 
+  .audio { display: flex; gap: .5rem; }
+  .audio button {
+    font: inherit; font-size: .9rem; padding: .4rem .8rem; cursor: pointer;
+    background: var(--ground); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 7px;
+  }
+  .audio button:hover { border-color: var(--accent); color: var(--accent); }
+
   .choices { display: grid; gap: .5rem; }
   .choices button {
     font: inherit; text-align: left; padding: .7rem .9rem;

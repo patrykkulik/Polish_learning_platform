@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 176 passing | — |
+| Test suite | 190 passing | — |
 
 Measured while proving it:
 
@@ -40,8 +40,16 @@ recall, a preposition drill, aspect choice and free translation — all generate
 with no LLM and no human review. Multi-slot items bring the two error classes a
 single blank cannot produce: `WORD_ORDER` and `MISSING_CONSTITUENT`.
 
-Not built: audio, the LLM content pipeline and the CDN (all need Azure); the
-React PWA (deferred — no capability gain over the current page).
+**Content pipeline and audio.** The design's pipeline is generate → validate →
+review → speak. `pl/content/validate.py` implements the validation stage and
+needs no model — every check is a morphological or arithmetic fact. The
+generation stage is authored offline and committed as `data/sentences.yaml`,
+which is what `item.source` was declared for: the runtime holds no API key and
+makes no network call. Speech comes from the local Polish voice at two speeds,
+cached to disk.
+
+Not built: blob storage and a CDN (deployment concerns, not development ones);
+the React PWA (deferred — no capability gain over the current page).
 
 ## Quick start
 
@@ -162,6 +170,10 @@ pl/api.py             JSON API; grading never runs in the browser
 data/lexemes.yaml     57 nouns + 6 aspect pairs, hand-curated
 data/nodes.yaml       the skill DAG
 data/frames.yaml      25 authored frames
+data/sentences.yaml   32 authored sentences, validated at build time
+data/function_words.yaml  lemmas the whitelist has to admit
+pl/content/validate.py  the pipeline's automated stage
+pl/audio.py           the only module that knows how speech is made
 tests/data/golden.yaml  the kill-gate corpus
 ```
 

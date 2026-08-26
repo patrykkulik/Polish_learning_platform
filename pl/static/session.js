@@ -48,7 +48,8 @@ function render() {
   const isChoice = item.exercise_type === "mcq" || item.exercise_type === "aspect_choice";
   // Free translation shows no Polish at all — the learner produces the whole
   // sentence — so its input is the answer field, not a gap inside a template.
-  const isFree = item.exercise_type === "free_translation";
+  const isFree = item.exercise_type === "free_translation"
+    || item.exercise_type === "listening_dictation";
   const sentence = isFree
     ? '<input id="answer" class="wide" autocomplete="off" autocapitalize="off" spellcheck="false">'
     : item.prompt.includes("___")
@@ -62,6 +63,7 @@ function render() {
     <div class="node">${escapeHtml(item.node.title)}</div>
     <div class="card">
       ${item.gloss ? `<div class="gloss">${escapeHtml(item.gloss)}</div>` : ""}
+      ${item.has_audio ? renderAudio(item) : ""}
       <div class="sentence">${sentence}</div>
       ${isChoice ? renderChoices(item) : ""}
     </div>
@@ -83,11 +85,27 @@ function render() {
     });
   }
   document.getElementById("go").onclick = () => submit(input ? input.value : "");
+  stage.querySelectorAll(".play").forEach((b) => {
+    b.onclick = () => {
+      const player = new Audio(`/api/audio/${item.id}?speed=${b.dataset.speed}`);
+      player.play().catch(() => {});
+    };
+  });
   if (isChoice) {
     stage.querySelectorAll(".choices button").forEach((b) => {
       b.onclick = () => { b.classList.add("picked"); submit(b.dataset.value); };
     });
   }
+}
+
+/* Two speeds, as the design asks for: a learner who cannot follow the natural
+ * pace needs the same sentence slower, not an easier one. */
+function renderAudio(item) {
+  return `
+    <div class="audio">
+      <button type="button" class="play" data-speed="normal">▶ Play</button>
+      <button type="button" class="play" data-speed="slow">▶ Slower</button>
+    </div>`;
 }
 
 function renderChoices(item) {

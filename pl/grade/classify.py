@@ -94,6 +94,25 @@ def normalise(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
+#: Stripped from token edges before comparison. Punctuation carries no
+#: morphology, and a learner who omits a full stop has not made a case error.
+PUNCTUATION: Final = ".,!?;:—–\"'()„”"
+
+
+def tokenise(text: str) -> list[str]:
+    """Normalised words, without punctuation.
+
+    The grader, the slot builder and the content validator must all agree about
+    what counts as a token, or a sentence ending in a full stop grades as having
+    one word more than it was stored with.
+    """
+    return [
+        stripped
+        for token in normalise(text).split()
+        if (stripped := token.strip(PUNCTUATION))
+    ]
+
+
 def _fold(text: str) -> str:
     return "".join(_ASCII_FOLD.get(ch, ch) for ch in text)
 
@@ -227,7 +246,7 @@ def classify_sentence(
     Pure, like `classify`: the caller supplies the expected surfaces and the
     target's paradigm.
     """
-    tokens = normalise(submitted).split()
+    tokens = tokenise(submitted)
     wanted = [normalise(surface) for surface in expected]
 
     def result(error_class: ErrorClass) -> Diagnosis:

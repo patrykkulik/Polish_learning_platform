@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -25,7 +25,9 @@ from pl import db as database
 from pl import session as composer
 from pl import streak as streaks
 from pl import tags
+from pl import audio
 from pl.content import ingest
+from pl.content.frames import MULTI_SLOT
 from pl.domain import ExpectedSlot
 from pl.domain import Form as DomainForm
 from pl.grade import classify, classify_sentence, explain
@@ -85,7 +87,7 @@ def grade_item(db, item: Item, submitted: str):
     carrying the inflected target is graded by the same six-step classifier —
     so a case error inside a sentence is still diagnosed as a case error.
     """
-    if item.exercise_type != "free_translation":
+    if item.exercise_type not in MULTI_SLOT:
         return classify(expected_slot(db, item), submitted)
 
     slots = list(
@@ -119,8 +121,39 @@ def _serialise(db, item: Item) -> dict:
         "prompt": item.prompt,
         "gloss": item.gloss,
         "options": item.options_json,
+        # Whether the client should offer a player. Never the audio itself, and
+        # never the text it renders — for dictation, the sentence IS the answer.
+        "has_audio": item.exercise_type in AUDIBLE and audio.available(),
         "node": {"key": node.key, "title": node.title, "type": node.type},
     }
+
+
+#: Exercise types the learner is meant to hear rather than read.
+AUDIBLE = frozenset({"listening_dictation"})
+
+
+@app.get("/api/audio/{item_id}")
+def item_audio(item_id: int, speed: str = "normal"):
+    """Synthesised speech for one item, cached after the first request.
+
+    Deliberately a separate endpoint rather than a field on the item: the
+    session payload must never carry the sentence for a dictation item, because
+    the sentence is the answer. The learner gets a URL that returns sound.
+    """
+    if not audio.available():
+        raise HTTPException(503, "no speech synthesiser on this machine")
+    db = database.session()
+    try:
+        item = db.get(Item, item_id)
+        if item is None or item.exercise_type not in AUDIBLE:
+            raise HTTPException(404, "no audio for this item")
+        try:
+            path = audio.synthesise(item.expected_answer, speed=speed)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return FileResponse(path, media_type="audio/mp4")
+    finally:
+        db.close()
 
 
 @app.get("/", response_class=HTMLResponse)

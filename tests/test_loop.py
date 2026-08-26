@@ -71,11 +71,15 @@ def test_every_expected_answer_is_a_real_form(db):
     the inflected target occurs in it as a whole token — not that the entire
     answer is one paradigm cell.
     """
+    from pl.content.frames import MULTI_SLOT
+
     for item in db.scalars(select(Item)):
         form = db.get(Form, item.target_form_id)
         assert form is not None
-        if item.exercise_type == "free_translation":
-            assert form.surface in item.expected_answer.split()
+        if item.exercise_type in MULTI_SLOT:
+            from pl.grade.classify import tokenise
+
+            assert form.surface.casefold() in tokenise(item.expected_answer)
         else:
             assert form.surface == item.expected_answer
 

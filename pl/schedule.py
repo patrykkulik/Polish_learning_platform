@@ -163,6 +163,21 @@ def apply_rating(db: Session, card: Card, rating: Rating, attempt_id: int) -> No
     db.add(Review(attempt_id=attempt_id, card_id=card.id, rating=int(rating)))
 
 
+#: Exercise types where a spelling slip is a failure rather than a stumble.
+#: Everywhere else `ORTHOGRAPHY` must not fail the grammar card — but dictation
+#: exists to test spelling, so being lenient about it would leave the exercise
+#: testing nothing it claims to.
+STRICT_ORTHOGRAPHY = frozenset({"listening_dictation"})
+
+
+def ratings_for(item: Item, error_class: ErrorClass) -> dict[str, Rating]:
+    """The routing entry, with dictation's stricter reading of a spelling slip."""
+    ratings = ROUTING.get(error_class, {})
+    if error_class is ErrorClass.ORTHOGRAPHY and item.exercise_type in STRICT_ORTHOGRAPHY:
+        return dict.fromkeys(ratings, Rating.Again)
+    return ratings
+
+
 def apply_diagnosis(
     db: Session,
     user_id: int,
@@ -172,7 +187,7 @@ def apply_diagnosis(
 ) -> dict[str, Rating]:
     """Route one diagnosis to the cards it scores. Returns what was applied."""
     cards = cards_for_item(db, user_id, item)
-    ratings = ROUTING.get(diagnosis.error_class, {})
+    ratings = ratings_for(item, diagnosis.error_class)
     applied: dict[str, Rating] = {}
 
     for population, card in cards.items():

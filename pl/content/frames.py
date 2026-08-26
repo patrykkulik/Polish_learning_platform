@@ -27,6 +27,7 @@ from pl.content.ingest import (
     rule_stratification,
 )
 from pl.content.validate import validate
+from pl.grade.classify import tokenise
 from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
@@ -35,6 +36,10 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 #: unstable across builds, and unstable identity churns nothing at M1 but would
 #: churn `item_variant` rows later.
 SEED = 20260824
+
+#: Exercise types where the learner produces more than one token, and the
+#: expected analysis therefore has to be held per position.
+MULTI_SLOT = frozenset({"free_translation", "listening_dictation"})
 
 
 def _frames() -> list[dict]:
@@ -321,16 +326,18 @@ def _build_slots(db: Session, items: list[Item]) -> None:
     know.
     """
     for item in items:
-        if item.exercise_type != "free_translation":
+        if item.exercise_type not in MULTI_SLOT:
             continue
         target = db.get(Form, item.target_form_id)
-        for index, token in enumerate(item.expected_answer.split()):
+        for index, token in enumerate(tokenise(item.expected_answer)):
             db.add(
                 ItemSlot(
                     item_id=item.id,
                     slot_index=index,
                     expected_surface=token,
-                    target_form_id=target.id if token == target.surface else None,
+                    target_form_id=(
+                        target.id if token == target.surface.casefold() else None
+                    ),
                 )
             )
     db.flush()
@@ -445,11 +452,11 @@ def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> N
         if form is None:
             raise AssertionError(f"item {item.prompt!r} names a missing form")
 
-        if item.exercise_type == "free_translation":
+        if item.exercise_type in MULTI_SLOT:
             # The answer is a sentence, so the check is that the inflected
             # target genuinely occurs in it as a whole token — not that the
             # whole answer is one paradigm cell.
-            if form.surface not in item.expected_answer.split():
+            if form.surface.casefold() not in tokenise(item.expected_answer):
                 raise AssertionError(
                     f"item {item.gloss!r} expects {item.expected_answer!r}, "
                     f"which does not contain the form {form.surface!r}"
@@ -560,7 +567,28 @@ def build_sentence_items(db: Session) -> list[Item]:
         db.add(item)
         created.append(item)
 
+        # The same sentence, heard rather than read. Dictation is the only
+        # exercise where spelling is the lesson, and it needs no extra content:
+        # the sentence is already validated and already sliced into slots.
+        dictation_key = ("listening_dictation", "", entry["text"])
+        if dictation_key not in existing:
+            existing.add(dictation_key)
+            dictation = Item(
+                node_id=pattern.node_id,
+                pattern_id=pattern.id,
+                exercise_type="listening_dictation",
+                prompt="",
+                gloss="Listen, and write what you hear.",
+                expected_answer=entry["text"],
+                target_form_id=target.id,
+                options_json=None,
+                source="generated",
+            )
+            db.add(dictation)
+            created.append(dictation)
+
     db.flush()
+    _build_slots(db, created)
     db.commit()
     return created
 

@@ -385,7 +385,9 @@ def test_free_translation_items_have_a_slot_per_token(db):
         assert len(slots) >= 2, f"{item.expected_answer!r} has {len(slots)} slot(s)"
         assert [s.slot_index for s in slots] == list(range(len(slots)))
         # The slots must reconstruct the expected answer exactly.
-        assert " ".join(s.expected_surface for s in slots) == item.expected_answer
+        from pl.grade.classify import tokenise
+
+        assert [s.expected_surface for s in slots] == tokenise(item.expected_answer)
         # Exactly one slot is the inflected target; the rest are fixed context.
         assert sum(1 for s in slots if s.target_form_id is not None) == 1
 
@@ -450,3 +452,45 @@ def test_vocabulary_distractors_are_nouns(db):
             assert option in noun_surfaces, (
                 f"{option!r} is offered as a noun but is not a form of any noun"
             )
+
+
+def test_dictation_items_are_graded_on_spelling(db):
+    """Dictation is the one exercise where a spelling slip is a failure.
+
+    Everywhere else `ORTHOGRAPHY` scores `Hard` and leaves the grammar card
+    standing, because the learner knew the grammar and lacked a keyboard. A
+    dictation item exists to test spelling, so being lenient there would leave
+    it testing nothing it claims to.
+    """
+    from pl.domain import ErrorClass
+    from pl.schedule import ratings_for
+
+    item = db.scalar(
+        select(Item).where(Item.exercise_type == "listening_dictation")
+    )
+    assert item is not None, "no dictation items were built"
+
+    strict = ratings_for(item, ErrorClass.ORTHOGRAPHY)
+    assert strict and set(strict.values()) == {1}, "spelling must fail here"
+
+    cloze = db.scalar(select(Item).where(Item.exercise_type == "cloze"))
+    lenient = ratings_for(cloze, ErrorClass.ORTHOGRAPHY)
+    assert set(lenient.values()) == {2}, "and must not fail anywhere else"
+
+
+def test_a_dictation_item_never_ships_its_sentence_to_the_client(db):
+    """For dictation the sentence *is* the answer.
+
+    Criterion 17 says no expected answer reaches the client before submission.
+    Every other exercise shows Polish in the prompt; this one must not, or the
+    learner reads what they were supposed to hear.
+    """
+    from pl.api import _serialise
+
+    for item in db.scalars(
+        select(Item).where(Item.exercise_type == "listening_dictation")
+    ):
+        payload = _serialise(db, item)
+        assert item.expected_answer not in str(payload)
+        assert payload["prompt"] == ""
+        assert payload["options"] is None

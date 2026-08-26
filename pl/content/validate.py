@@ -19,7 +19,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from pl import morph
-from pl.grade.classify import normalise
+from pl.grade.classify import normalise, tokenise
 
 
 class Rejection(StrEnum):
@@ -41,15 +41,6 @@ class Rejection(StrEnum):
 
 #: A1 sentences are short. The bound is a level decision, not a technical one.
 MAX_TOKENS = 8
-
-
-def tokenise(text: str) -> list[str]:
-    """Words only. Punctuation carries no morphology to check."""
-    return [
-        token.strip(".,!?;:—–\"'()„”")
-        for token in normalise(text).split()
-        if token.strip(".,!?;:—–\"'()„”")
-    ]
 
 
 def validate(
