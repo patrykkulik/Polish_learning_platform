@@ -708,3 +708,74 @@ def _defer_everything(db):
     for card in db.scalars(select(Card)):
         card.due_at = later
     db.commit()
+
+
+def test_no_dictation_is_offered_without_a_synthesiser(db, monkeypatch):
+    """A listening item is unanswerable without a voice and must not be offered.
+
+    Asserted on the guard itself rather than by driving `build_session`, because
+    a dictation item is **currently unreachable through every segment**: it
+    shares both referents with the cloze item built from the same sentence, so
+    introduction always sees it as started, and the debt path serves the first
+    item for a due form, which is that cloze. A test driven through the composer
+    would pass while asserting nothing. The guard is applied at all three
+    segments and is what will matter once dictation becomes reachable.
+
+    Runs on every platform, unlike the rest of the audio tests.
+    """
+    from pl import audio
+    from pl.domain import AUDIBLE
+    from pl.session import offerable
+
+    dictation = db.scalar(
+        select(Item).where(Item.exercise_type.in_(tuple(AUDIBLE)))
+    )
+    cloze = db.scalar(select(Item).where(Item.exercise_type == "cloze"))
+    assert dictation is not None and cloze is not None
+
+    monkeypatch.setattr(audio, "available", lambda: True)
+    assert offerable(dictation) and offerable(cloze)
+
+    monkeypatch.setattr(audio, "available", lambda: False)
+    assert not offerable(dictation), "a listening item was offerable with no voice"
+    assert offerable(cloze), "a written item must be unaffected"
+
+
+def test_listening_items_are_currently_unreachable(db, user, monkeypatch):
+    """Records a live defect so it is not rediscovered as a surprise.
+
+    52 dictation items are built and none can ever be served. Introduction skips
+    them because they share both referents with the cloze from the same
+    sentence; debt serves the lowest-id item for a due form, which is that
+    cloze. This test asserts the *current* behaviour — when dictation is made
+    reachable it will fail, and that failure is the signal to delete it.
+    """
+    from datetime import datetime as dt
+
+    from pl import audio
+    from pl.domain import AUDIBLE
+    from pl.models import NodeUnlock
+
+    monkeypatch.setattr(audio, "available", lambda: True)
+    for node in db.scalars(select(Node)):
+        db.add(
+            NodeUnlock(
+                user_id=user.id,
+                node_id=node.id,
+                unlocked_at=dt.now(UTC).replace(tzinfo=None),
+            )
+        )
+    db.commit()
+
+    offered = 0
+    for _ in range(12):
+        picked, _ = build_session(db, user.id, SETTINGS, limit=20)
+        offered += sum(1 for i in picked if i.exercise_type in AUDIBLE)
+        for item in picked:
+            answer(db, user, item)
+        _defer_everything(db)
+
+    assert offered == 0, (
+        "listening items are now reachable — delete this test and assert the "
+        "behaviour you want instead"
+    )

@@ -34,6 +34,8 @@ from pl.models import (
     Review,
     Sense,
 )
+from pl import audio
+from pl.domain import AUDIBLE
 from pl.schedule import LEXICAL, MORPH, PATTERN, Rating, populations_for
 
 #: Days of retention a card must once have reached to count toward mastery.
@@ -301,6 +303,19 @@ def weakest_node(db: Session, user_id: int, days: int = 14) -> Node | None:
     return db.get(Node, best) if best else None
 
 
+def offerable(item: Item) -> bool:
+    """Whether this item can actually be answered on this machine.
+
+    A listening item without a synthesiser is not merely degraded — it is
+    unanswerable. The learner sees an empty box under "Listen, and write what
+    you hear", and because a dictation item shares its pattern card with the
+    cloze items built from the same sentence, the forced failure rates a card
+    the learner is otherwise mastering and returns through the debt queue,
+    which is served first.
+    """
+    return item.exercise_type not in AUDIBLE or audio.available()
+
+
 def build_session(
     db: Session, user_id: int, settings: dict, limit: int = 20
 ) -> tuple[list[Item], dict]:
@@ -324,6 +339,8 @@ def build_session(
     ).all()
     for card in due:
         for item in _items_for_card(db, card):
+            if not offerable(item):
+                continue
             if add(item):
                 break
     debt_total = len(due)
@@ -334,6 +351,8 @@ def build_session(
         weak = weakest_node(db, user_id)
         if weak is not None:
             for item in db.scalars(select(Item).where(Item.node_id == weak.id)):
+                if not offerable(item):
+                    continue
                 # `add` returns False both when the session is full and when the
                 # item is already picked. Only the first is a reason to stop —
                 # treating the second as one ends remediation on its first
@@ -362,6 +381,8 @@ def build_session(
                 if introduced >= DAILY_NEW_CAP or len(picked) >= limit:
                     break
                 for item in pool:
+                    if not offerable(item):
+                        continue
                     refs = _item_referents(node, item, sense_by_form)
                     # Skip only when the item is entirely old. A pattern card is
                     # shared by every lexeme in its stratum, so testing for *any*

@@ -11,6 +11,8 @@ page with a PWA later replaces the page and not the backend.
 
 from __future__ import annotations
 
+import logging
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,12 +29,13 @@ from pl import streak as streaks
 from pl import tags
 from pl import audio
 from pl.content import ingest
-from pl.content.frames import MULTI_SLOT
-from pl.domain import ExpectedSlot
+from pl.domain import AUDIBLE, MULTI_SLOT, ExpectedSlot
 from pl.domain import Form as DomainForm
 from pl.grade import classify, classify_sentence, explain
 from pl.models import AppUser, Attempt, Form, Item, ItemSlot, Lexeme, Node
 from pl.schedule import apply_diagnosis
+
+log = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
 
@@ -140,10 +143,6 @@ def _serialise(db, item: Item) -> dict:
     }
 
 
-#: Exercise types the learner is meant to hear rather than read.
-AUDIBLE = frozenset({"listening_dictation"})
-
-
 @app.get("/api/audio/{item_id}")
 def item_audio(item_id: int, speed: str = "normal"):
     """Synthesised speech for one item, cached after the first request.
@@ -163,6 +162,14 @@ def item_audio(item_id: int, speed: str = "normal"):
             path = audio.synthesise(item.expected_answer, speed=speed)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        except (subprocess.SubprocessError, OSError) as exc:
+            # A voice that vanished, an unwritable cache, a wedged child. The
+            # client cannot act on any of them, but it must be able to tell
+            # "no audio here" from "this item is broken" — and the cause has to
+            # reach the log, because the browser silently swallows a failed
+            # play() and the learner just sees a button that does nothing.
+            log.exception("synthesis failed for item %s", item_id)
+            raise HTTPException(503, "speech synthesis failed") from exc
         return FileResponse(path, media_type="audio/mp4")
     finally:
         db.close()

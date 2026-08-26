@@ -27,6 +27,7 @@ from pl.content.ingest import (
     rule_stratification,
 )
 from pl.content.validate import validate
+from pl.domain import MULTI_SLOT
 from pl.grade.classify import tokenise
 from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
 
@@ -36,11 +37,6 @@ DATA = Path(__file__).resolve().parent.parent.parent / "data"
 #: unstable across builds, and unstable identity churns nothing at M1 but would
 #: churn `item_variant` rows later.
 SEED = 20260824
-
-#: Exercise types where the learner produces more than one token, and the
-#: expected analysis therefore has to be held per position.
-MULTI_SLOT = frozenset({"free_translation", "listening_dictation"})
-
 
 def _frames() -> list[dict]:
     return yaml.safe_load((DATA / "frames.yaml").read_text(encoding="utf-8"))

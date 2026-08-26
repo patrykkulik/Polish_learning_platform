@@ -31,7 +31,7 @@ from fsrs import Rating, Scheduler
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pl.domain import Diagnosis, ErrorClass
+from pl.domain import STRICT_ORTHOGRAPHY, Diagnosis, ErrorClass
 from pl.models import Card, ErrorEvent, Form, Item, Node, Review, Sense
 
 #: Stock parameters. Optimisation needs roughly a thousand reviews and pulls
@@ -161,13 +161,6 @@ def apply_rating(db: Session, card: Card, rating: Rating, attempt_id: int) -> No
     card.stability_max = max(card.stability_max or 0.0, updated.stability or 0.0)
 
     db.add(Review(attempt_id=attempt_id, card_id=card.id, rating=int(rating)))
-
-
-#: Exercise types where a spelling slip is a failure rather than a stumble.
-#: Everywhere else `ORTHOGRAPHY` must not fail the grammar card — but dictation
-#: exists to test spelling, so being lenient about it would leave the exercise
-#: testing nothing it claims to.
-STRICT_ORTHOGRAPHY = frozenset({"listening_dictation"})
 
 
 def ratings_for(item: Item, error_class: ErrorClass) -> dict[str, Rating]:

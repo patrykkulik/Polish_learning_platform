@@ -49,6 +49,40 @@ class ErrorClass(StrEnum):
     MISSING_CONSTITUENT = "MISSING_CONSTITUENT"
 
 
+class ExerciseType(StrEnum):
+    """What the learner is asked to do.
+
+    Declared here rather than in the module that builds content, because every
+    layer needs it: the grader picks a strategy from it, the scheduler reads it
+    for the dictation orthography rule, the API decides what to serialise, and
+    the session composer filters on it. Importing that from the build pipeline
+    made the serving path depend on `yaml` and the whole ingest chain.
+    """
+
+    CLOZE = "cloze"
+    MCQ = "mcq"
+    PREP_DRILL = "prep_drill"
+    ASPECT_CHOICE = "aspect_choice"
+    FREE_TRANSLATION = "free_translation"
+    LISTENING_DICTATION = "listening_dictation"
+
+
+#: Types where the learner produces more than one token, so the expected
+#: analysis has to be held per position rather than in a single column.
+MULTI_SLOT: frozenset[str] = frozenset(
+    {ExerciseType.FREE_TRANSLATION, ExerciseType.LISTENING_DICTATION}
+)
+
+#: Types the learner is meant to hear rather than read. Without a synthesiser
+#: these are unanswerable and must not be offered at all.
+AUDIBLE: frozenset[str] = frozenset({ExerciseType.LISTENING_DICTATION})
+
+#: Types where a spelling slip is a failure rather than a stumble. Everywhere
+#: else ORTHOGRAPHY must not fail the grammar card — the learner knew the
+#: grammar and lacked a keyboard — but dictation exists to test spelling.
+STRICT_ORTHOGRAPHY: frozenset[str] = frozenset({ExerciseType.LISTENING_DICTATION})
+
+
 @dataclass(frozen=True, slots=True)
 class Form:
     """One inflected surface with its analysis."""

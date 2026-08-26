@@ -21,9 +21,15 @@ to B1 rather than pretending otherwise.
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 import shutil
 import subprocess
+import uuid
+from functools import lru_cache
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 #: macOS's speech synthesiser. Present on every Mac; absent everywhere else,
 #: which `available()` reports rather than discovering at request time.
@@ -39,14 +45,50 @@ RATES: dict[str, int] = {"normal": 175, "slow": 140}
 
 DEFAULT_CACHE = Path(__file__).resolve().parent.parent / "audio-cache"
 
+#: A synthesis of an eight-token A1 sentence takes well under a second. The
+#: bound exists because `item_audio` is a sync endpoint on the shared worker
+#: pool: a child that never returns holds a worker, and enough of them stop
+#: grading and session composition too, not just audio.
+TIMEOUT_SECONDS = 15
 
+
+def _installed_voices() -> set[str]:
+    """Voice names the engine reports. Isolated so tests can substitute it."""
+    try:
+        listing = subprocess.run(
+            [ENGINE, "-v", "?"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("could not list %s voices: %s", ENGINE, exc)
+        return set()
+    return {
+        line.split()[0]
+        for line in listing.stdout.splitlines()
+        if line.strip()
+    }
+
+
+@lru_cache(maxsize=1)
 def available() -> bool:
     """Whether speech can be produced on this machine at all.
 
-    Checked up front so the app can offer a session without audio rather than
-    failing a request halfway through one.
+    Checks for the **voice**, not merely the binary. `Zosia` is an optional
+    download on macOS, so "say exists" is the most likely false positive there:
+    it renders a player, then fails inside a request where the client swallows
+    the error and the learner gets a button that does nothing forever.
+
+    Memoised because it spawns a process; `available.cache_clear()` resets it.
     """
-    return shutil.which(ENGINE) is not None
+    if shutil.which(ENGINE) is None:
+        return False
+    if VOICE not in _installed_voices():
+        log.warning("%s is installed but the %r voice is not", ENGINE, VOICE)
+        return False
+    return True
 
 
 def cache_key(text: str, speed: str) -> str:
@@ -74,7 +116,8 @@ def synthesise(
         )
     if not available():
         raise RuntimeError(
-            f"{ENGINE!r} is not on PATH; this machine cannot synthesise speech"
+            f"cannot synthesise speech here: {ENGINE!r} or the {VOICE!r} voice "
+            f"is unavailable"
         )
 
     directory = cache_dir or DEFAULT_CACHE
@@ -85,20 +128,42 @@ def synthesise(
 
     # Written to a temporary name and moved into place, so an interrupted run
     # cannot leave a truncated file that the cache would then serve forever.
-    # The staging name keeps the `.m4a` suffix: `say` infers the container from
-    # the extension and refuses anything it does not recognise.
-    staging = path.with_name(f"{path.stem}.partial.m4a")
-    subprocess.run(
-        [
-            ENGINE,
-            "-v", VOICE,
-            "-r", str(RATES[speed]),
-            "--data-format=aac",
-            "-o", str(staging),
-            text,
-        ],
-        check=True,
-        capture_output=True,
-    )
-    staging.replace(path)
+    #
+    # The name is unique **per attempt**, not per cache key: two concurrent
+    # requests for the same text would otherwise write the same staging file,
+    # interleave, and both rename — permanently poisoning a content-keyed entry
+    # that nothing revalidates on read. `Path.replace` is atomic on POSIX, so
+    # unique names make concurrency merely wasteful. The `.m4a` suffix stays
+    # because `say` infers the container from the extension.
+    staging = path.with_name(f"{path.stem}.{os.getpid()}.{uuid.uuid4().hex}.m4a")
+    try:
+        subprocess.run(
+            [
+                ENGINE,
+                "-v", VOICE,
+                "-r", str(RATES[speed]),
+                "--data-format=aac",
+                "-o", str(staging),
+                # Ends option parsing: a sentence beginning with `-` would
+                # otherwise be read as a flag.
+                "--",
+                text,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=TIMEOUT_SECONDS,
+        )
+        staging.replace(path)
+    except subprocess.CalledProcessError as exc:
+        log.error(
+            "%s failed for %r (rc=%s): %s",
+            ENGINE, text[:60], exc.returncode,
+            (exc.stderr or b"").decode(errors="replace").strip(),
+        )
+        raise
+    except subprocess.TimeoutExpired:
+        log.error("%s timed out after %ss for %r", ENGINE, TIMEOUT_SECONDS, text[:60])
+        raise
+    finally:
+        staging.unlink(missing_ok=True)
     return path
