@@ -19,7 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pl import morph
-from pl.content.ingest import lexeme_themes, rule_node_map, rule_stratification
+from pl import tags
+from pl.content.ingest import (
+    lexeme_themes,
+    node_key_for,
+    rule_nodes,
+    rule_stratification,
+)
 from pl.models import Form, Item, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
@@ -54,6 +60,29 @@ def _cell(cells: list[Form], case: str, number: str = "sg") -> Form | None:
     return None
 
 
+def _match(cells: list[Form], spec: dict) -> Form | None:
+    """The stored cell matching every feature in `spec`.
+
+    Values are tested against the tag's value *sets*, the same containment the
+    accusative depends on. Used where a frame names a cell by features rather
+    than by case — an aspect frame wants `praet:sg:m1`, which has no case at all.
+    """
+    for form in cells:
+        tag = tags.parse(form.morph_tag)
+        if spec.get("pos") and tag.pos != spec["pos"]:
+            continue
+        if all(tag.has(k, v) for k, v in spec.items() if k != "pos"):
+            return form
+    return None
+
+
+def _frame_target(cells: list[Form], frame: dict) -> Form | None:
+    """The cell a frame asks for, however it asks."""
+    if "cell" in frame:
+        return _match(cells, frame["cell"])
+    return _cell(cells, frame["case"])
+
+
 def ensure_patterns(db: Session) -> list[Pattern]:
     """Create exactly the strata that some frame can actually populate.
 
@@ -65,7 +94,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
     """
     rule_cases = rule_stratification()
     themes = lexeme_themes()
-    node_of = rule_node_map()
+    node_of = rule_nodes()
     nodes = {n.key: n for n in db.scalars(select(Node))}
     existing = {
         (p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))
@@ -80,9 +109,11 @@ def ensure_patterns(db: Session) -> list[Pattern]:
         for lexeme in db.scalars(select(Lexeme)):
             if admitted and themes.get(lexeme.lemma) not in admitted:
                 continue
-            if _cell(_cells(db, lexeme), frame["case"]) is None:
+            if _frame_target(_cells(db, lexeme), frame) is None:
                 continue
-            node_key = node_of.get((rule, lexeme.gender))
+            if frame.get("aspect") and lexeme.aspect != frame["aspect"]:
+                continue
+            node_key = node_key_for(rule, lexeme, node_of)
             if node_key is None:
                 continue
             stratum = morph.paradigm_class(
@@ -141,6 +172,10 @@ def build_items(db: Session) -> list[Item]:
             if frame.get("vocabulary"):
                 item = _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes,
                                      glosses, rng)
+            elif frame["exercise_type"] == "aspect_choice":
+                item = _aspect_item(
+                    db, frame, lexeme, cells, gloss, patterns, rule_cases
+                )
             else:
                 item = _form_item(
                     frame, lexeme, cells, gloss, patterns, rng, rule_cases
@@ -209,6 +244,47 @@ def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item |
         exercise_type=frame["exercise_type"],
         prompt=frame["template"],
         gloss=frame["gloss"].format(gloss=gloss),
+        expected_answer=target.surface,
+        target_form_id=target.id,
+        options_json=options,
+        source="template",
+    )
+
+
+def _aspect_item(db, frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None:
+    """Choose between a verb and its aspect partner, in one fixed cell.
+
+    Both options are the *same* cell of the two partners, so the only thing the
+    learner decides is aspect — not tense, not person, and not a form they have
+    to build. The context word in the prompt carries the entire decision, which
+    is what makes this the specification's highest-value grammar exercise.
+    """
+    if lexeme.aspect != frame["aspect"] or lexeme.aspect_partner_id is None:
+        return None
+    target = _match(cells, frame["cell"])
+    partner_cells = list(
+        db.scalars(select(Form).where(Form.lexeme_id == lexeme.aspect_partner_id))
+    )
+    alternative = _match(partner_cells, frame["cell"])
+    if target is None or alternative is None:
+        return None
+    if target.surface == alternative.surface:
+        return None  # nothing to choose between
+
+    stratum = morph.paradigm_class(
+        lexeme.lemma, rule_cases[frame["rule_key"]], pos=lexeme.pos
+    )
+    pattern = patterns.get((frame["rule_key"], stratum))
+    if pattern is None:
+        return None
+
+    options = sorted({target.surface, alternative.surface})
+    return Item(
+        node_id=pattern.node_id,
+        pattern_id=pattern.id,
+        exercise_type=frame["exercise_type"],
+        prompt=frame["template"],
+        gloss=frame["gloss"].format(gloss=gloss.replace("to ", "").split(" (")[0]),
         expected_answer=target.surface,
         target_form_id=target.id,
         options_json=options,

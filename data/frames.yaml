@@ -177,3 +177,23 @@
   gloss: "I am thinking about the {gloss}."
   case: loc
   rule_key: LOC_PREPOSITION
+
+# ------------------------------------------------------------ aspect
+# The two options are the same cell of the two partners, so the learner is
+# choosing an aspect and nothing else — not a tense, not a person, not a form
+# they have to build. The context word carries the whole decision.
+- key: ASPECT_HABITUAL
+  exercise_type: aspect_choice
+  template: "Codziennie on ___."
+  gloss: "Every day — habitual, so not a single completed act. (to {gloss})"
+  rule_key: ASPECT_CHOICE
+  aspect: imperf
+  cell: {pos: fin, number: sg, person: ter}
+
+- key: ASPECT_COMPLETED
+  exercise_type: aspect_choice
+  template: "Wczoraj on ___."
+  gloss: "Yesterday, and he finished it — one completed act. (to {gloss})"
+  rule_key: ASPECT_CHOICE
+  aspect: perf
+  cell: {pos: praet, number: sg, gender: m1}

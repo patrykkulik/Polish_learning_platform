@@ -198,3 +198,68 @@
 - lemma: sztuka
   gloss: art
   theme: abstract
+
+# Verbs enter as aspect PAIRS, never singly. The specification is explicit that
+# a learner must never meet an imperfective without its perfective partner,
+# because the contrast is the lesson — an imperfective on its own teaches a word
+# where the pair teaches a distinction English does not make.
+- lemma: czytać
+  gloss: to read (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: przeczytać
+- lemma: przeczytać
+  gloss: to read (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: czytać
+- lemma: pisać
+  gloss: to write (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: napisać
+- lemma: napisać
+  gloss: to write (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: pisać
+- lemma: robić
+  gloss: to do (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: zrobić
+- lemma: zrobić
+  gloss: to do (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: robić
+- lemma: jeść
+  gloss: to eat (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: zjeść
+- lemma: zjeść
+  gloss: to eat (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: jeść
+- lemma: pić
+  gloss: to drink (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: wypić
+- lemma: wypić
+  gloss: to drink (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: pić
+- lemma: kupować
+  gloss: to buy (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: kupić
+- lemma: kupić
+  gloss: to buy (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: kupować

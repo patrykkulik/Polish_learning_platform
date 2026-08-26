@@ -72,21 +72,34 @@ def rule_stratification() -> dict[str, tuple[str, ...]]:
     return out
 
 
-def rule_node_map() -> dict[tuple[str, str], str]:
-    """(rule_key, gender) -> node key.
+def rule_nodes() -> dict[str, list[tuple[dict, str]]]:
+    """rule_key -> [(match spec, node key)].
 
     One rule can span several nodes: the accusative splits three ways because
-    the ending depends on gender and animacy, and all three nodes share
-    `ACC_AFTER_TRANSITIVE_VERB`.
+    the ending depends on gender and animacy, and all three share
+    `ACC_AFTER_TRANSITIVE_VERB`. A node selects its share by gender, or by part
+    of speech where gender is not a property the lexeme has — aspect is a verb
+    distinction and verbs are not gendered in the infinitive.
     """
-    out: dict[tuple[str, str], str] = {}
+    out: dict[str, list[tuple[dict, str]]] = {}
     for entry in _load("nodes.yaml"):
         rule = entry.get("rule_key")
         if not rule:
             continue
-        for gender in entry.get("genders", []):
-            out[(rule, gender)] = entry["key"]
+        spec = {k: entry[k] for k in ("genders", "pos") if k in entry}
+        out.setdefault(rule, []).append((spec, entry["key"]))
     return out
+
+
+def node_key_for(rule: str, lexeme, mapping: dict) -> str | None:
+    """Which node of `rule` claims `lexeme`, if any."""
+    for spec, key in mapping.get(rule, []):
+        if "pos" in spec and lexeme.pos != spec["pos"]:
+            continue
+        if "genders" in spec and lexeme.gender not in spec["genders"]:
+            continue
+        return key
+    return None
 
 
 def lexeme_themes() -> dict[str, str]:
@@ -235,7 +248,12 @@ def ingest_nodes(db: Session, lexemes: dict[str, Lexeme]) -> dict[str, Node]:
             if genders is None or lex.gender in genders
         ]
         if entry["type"] == "vocabulary":
-            eligible = list(lexemes.values())
+            # Only the parts of speech this node actually has items for. A
+            # vocabulary node gates on the senses of its lexemes, so adopting a
+            # lexeme no item covers puts an unmasterable referent straight into
+            # the denominator — twelve verbs would push V01's 80% out of reach.
+            wanted = entry.get("pos", "subst")
+            eligible = [lex for lex in lexemes.values() if lex.pos == wanted]
 
         for lex in eligible:
             if db.get(NodeLexeme, (node.id, lex.id)) is None:

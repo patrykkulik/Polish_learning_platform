@@ -166,3 +166,26 @@
     `Kraków → w Krakowie`, `książka → o książce`, `herbata → w herbacie`.
 
     Those alternations are the lesson, not an inconvenience around it.
+
+# ---------------------------------------------------------------- aspect
+# The specification calls this the single highest-value grammar node in the
+# product, and it is deliberately not gated behind the later cases: aspect is
+# taught from the first verb, not bolted on once the noun system is finished.
+- key: N12
+  type: grammar
+  title: Aspect — ongoing or completed
+  cefr_level: A1
+  prereqs: [N06]
+  rule_key: ASPECT_CHOICE
+  pos: inf
+  explanation_md: |
+    Polish verbs come in pairs. The **imperfective** describes an action as
+    ongoing, repeated or habitual; the **perfective** describes it as a single
+    completed whole. English marks this with tense and context; Polish marks it
+    by choosing a different verb.
+
+    `Codziennie czytam` — *I read every day*, habitual, imperfective.
+    `Wczoraj przeczytałem` — *yesterday I read it (and finished)*, perfective.
+
+    There is no neutral choice. Every time you use a verb you are asserting one
+    of these, so it is worth getting wrong often and early.

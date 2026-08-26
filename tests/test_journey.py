@@ -22,7 +22,7 @@ from pl import models
 from pl.api import expected_slot
 from pl.content import frames, ingest
 from pl.grade import classify
-from pl.models import Attempt, Card, Item, Node, Pattern
+from pl.models import Attempt, Card, Form, Item, Node, Pattern
 from pl.schedule import apply_diagnosis
 from pl.session import build_session, evaluate_unlocks
 
@@ -326,3 +326,34 @@ def test_strata_reflect_the_rule_they_belong_to(db):
     assert pattern_of("sklep", "LOC_PREPOSITION") != pattern_of(
         "dom", "LOC_PREPOSITION"
     ), "two nouns with different locatives were put in the same locative stratum"
+
+
+def test_aspect_items_offer_exactly_the_pair(db):
+    """The learner chooses an aspect and nothing else.
+
+    Both options are the same cell of the two partners, so tense, person and
+    form are held constant and only the aspect varies. If the options ever
+    differed in anything else the exercise would stop testing what it claims to.
+    """
+    from pl.models import Lexeme
+
+    n12 = db.scalar(select(Node).where(Node.key == "N12"))
+    items = list(db.scalars(select(Item).where(Item.node_id == n12.id)))
+    assert items, "no aspect items were built"
+
+    for item in items:
+        assert item.exercise_type == "aspect_choice"
+        assert len(item.options_json) == 2, item.options_json
+        assert item.expected_answer in item.options_json
+
+    # The habitual frame must want the imperfective, and the completed frame the
+    # perfective — the whole contrast rests on the context word.
+    habitual = [i for i in items if i.prompt.startswith("Codziennie")]
+    assert habitual, "no habitual-context aspect items"
+    for item in habitual:
+        form = db.get(Form, item.target_form_id)
+        lexeme = db.get(Lexeme, form.lexeme_id)
+        assert lexeme.aspect == "imperf", (
+            f"{item.expected_answer!r} is {lexeme.aspect}, but 'Codziennie' is habitual"
+        )
+        assert lexeme.aspect_partner_id is not None, "a verb shipped without its pair"
