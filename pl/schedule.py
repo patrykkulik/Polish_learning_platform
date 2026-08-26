@@ -70,6 +70,11 @@ ROUTING: Final[dict[ErrorClass, dict[str, Rating]]] = {
     ErrorClass.LEXICAL: {LEXICAL: Rating.Again},
     # Nothing is known about what went wrong, so both grammar cards fail.
     ErrorClass.UNANALYSABLE: {MORPH: Rating.Again, PATTERN: Rating.Again},
+    # Multi-slot only. Both are syntax rather than morphology: the learner
+    # produced the right forms, so the morphological card is left alone and the
+    # rule card takes it.
+    ErrorClass.WORD_ORDER: {PATTERN: Rating.Again},
+    ErrorClass.MISSING_CONSTITUENT: {PATTERN: Rating.Again},
 }
 
 

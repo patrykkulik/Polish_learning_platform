@@ -26,7 +26,7 @@ from pl.content.ingest import (
     rule_nodes,
     rule_stratification,
 )
-from pl.models import Form, Item, Lexeme, Node, Pattern, Sense
+from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -172,6 +172,8 @@ def build_items(db: Session) -> list[Item]:
             if frame.get("vocabulary"):
                 item = _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes,
                                      glosses, rng)
+            elif frame["exercise_type"] == "free_translation":
+                item = _free_item(frame, lexeme, cells, gloss, patterns, rule_cases)
             elif frame["exercise_type"] == "aspect_choice":
                 item = _aspect_item(
                     db, frame, lexeme, cells, gloss, patterns, rule_cases
@@ -203,6 +205,7 @@ def build_items(db: Session) -> list[Item]:
             created.append(item)
 
     db.flush()
+    _build_slots(db, created)
     _assert_expected_answers_are_real_forms(db, created)
     db.commit()
     return created
@@ -249,6 +252,56 @@ def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item |
         options_json=options,
         source="template",
     )
+
+
+def _free_item(frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None:
+    """A whole sentence the learner types out, one slot per token."""
+    target = _cell(cells, frame["case"])
+    if target is None:
+        return None
+    stratum = morph.paradigm_class(
+        lexeme.lemma, rule_cases[frame["rule_key"]], pos=lexeme.pos
+    )
+    pattern = patterns.get((frame["rule_key"], stratum))
+    if pattern is None:
+        return None
+
+    sentence = frame["sentence"].format(form=target.surface)
+    return Item(
+        node_id=pattern.node_id,
+        pattern_id=pattern.id,
+        exercise_type=frame["exercise_type"],
+        prompt=frame["template"],
+        gloss=frame["gloss"].format(gloss=gloss),
+        expected_answer=sentence,
+        target_form_id=target.id,
+        options_json=None,
+        source="template",
+    )
+
+
+def _build_slots(db: Session, items: list[Item]) -> None:
+    """Give every multi-slot item one row per token position.
+
+    Slots are derived from the frame's own components rather than by analysing
+    the finished sentence: the analyser returns a lattice, and picking a path
+    through it to decide what *we* meant would be inventing an answer we already
+    know.
+    """
+    for item in items:
+        if item.exercise_type != "free_translation":
+            continue
+        target = db.get(Form, item.target_form_id)
+        for index, token in enumerate(item.expected_answer.split()):
+            db.add(
+                ItemSlot(
+                    item_id=item.id,
+                    slot_index=index,
+                    expected_surface=token,
+                    target_form_id=target.id if token == target.surface else None,
+                )
+            )
+    db.flush()
 
 
 def _aspect_item(db, frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None:
@@ -350,7 +403,19 @@ def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> N
         if item.target_form_id is None:
             raise AssertionError(f"item {item.prompt!r} has no target form")
         form = db.get(Form, item.target_form_id)
-        if form is None or form.surface != item.expected_answer:
+        if form is None:
+            raise AssertionError(f"item {item.prompt!r} names a missing form")
+
+        if item.exercise_type == "free_translation":
+            # The answer is a sentence, so the check is that the inflected
+            # target genuinely occurs in it as a whole token — not that the
+            # whole answer is one paradigm cell.
+            if form.surface not in item.expected_answer.split():
+                raise AssertionError(
+                    f"item {item.gloss!r} expects {item.expected_answer!r}, "
+                    f"which does not contain the form {form.surface!r}"
+                )
+        elif form.surface != item.expected_answer:
             raise AssertionError(
                 f"item {item.prompt!r} expects {item.expected_answer!r}, "
                 f"which is not the surface of form {item.target_form_id}"

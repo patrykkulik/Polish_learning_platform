@@ -174,6 +174,32 @@ class Item(Base):
     difficulty: Mapped[float | None] = mapped_column(Float)
 
 
+class ItemSlot(Base):
+    """One token position in a multi-slot item, with what was expected there.
+
+    A single-blank cloze holds its answer in `item.expected_answer` and its
+    analysis in `item.target_form_id`. A whole typed sentence has neither: the
+    grader needs to know what belonged at *each* position, and without that
+    `WORD_ORDER` and `MISSING_CONSTITUENT` are indistinguishable from a learner
+    simply using the wrong word.
+
+    A slot is either fixed context (`target_form_id` null — the surface is all
+    there is to check) or the inflected target (`target_form_id` set, graded by
+    the full six-step classifier).
+    """
+
+    __tablename__ = "item_slot"
+    __table_args__ = (
+        UniqueConstraint("item_id", "slot_index", name="item_slot_position_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("item.id"))
+    slot_index: Mapped[int] = mapped_column(Integer)
+    expected_surface: Mapped[str] = mapped_column(String(64))
+    target_form_id: Mapped[int | None] = mapped_column(ForeignKey("form.id"))
+
+
 class ItemVariant(Base):
     __tablename__ = "item_variant"
 

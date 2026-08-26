@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 170 passing | — |
+| Test suite | 176 passing | — |
 
 Measured while proving it:
 
@@ -29,11 +29,19 @@ Measured while proving it:
   of magnitude inside that, which is why there is no sidecar and no cache.
 - 8 threads × 400 mixed analyse/generate calls: no errors.
 
-**M1 — the learning loop.** Single user, no auth. 44 lexemes, nominative and
-accusative, three exercise types, FSRS over three card populations, session
-composition, streak, and a review screen. 439 items across cloze, form-selection
-multiple choice and a preposition drill — generated with no LLM and no human
-review.
+**M1 — the learning loop.** Single user, no auth. FSRS over three card
+populations, session composition, streak, and a review screen.
+
+**M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
+genitive split three ways, locative with its palatalisation alternations, and
+aspect taught from the first verb as pairs. 69 lexemes, 25 frames, **960 items**
+across five exercise types — cloze, form-selection multiple choice, meaning
+recall, a preposition drill, aspect choice and free translation — all generated
+with no LLM and no human review. Multi-slot items bring the two error classes a
+single blank cannot produce: `WORD_ORDER` and `MISSING_CONSTITUENT`.
+
+Not built: audio, the LLM content pipeline and the CDN (all need Azure); the
+React PWA (deferred — no capability gain over the current page).
 
 ## Quick start
 
@@ -151,9 +159,9 @@ pl/session.py         debt -> remediation -> new, and the unlock gate
 pl/streak.py          both conditions, in the learner's own timezone
 pl/api.py             JSON API; grading never runs in the browser
 
-data/lexemes.yaml     44 nouns, hand-curated, theme-driven
+data/lexemes.yaml     57 nouns + 6 aspect pairs, hand-curated
 data/nodes.yaml       the skill DAG
-data/frames.yaml      10 authored frames
+data/frames.yaml      25 authored frames
 tests/data/golden.yaml  the kill-gate corpus
 ```
 

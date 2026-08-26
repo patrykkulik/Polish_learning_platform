@@ -65,10 +65,19 @@ def test_content_build_produces_enough_items(db):
 
 
 def test_every_expected_answer_is_a_real_form(db):
-    """Criterion 16's second half, re-asserted over what actually landed."""
+    """Criterion 16's second half, re-asserted over what actually landed.
+
+    A multi-slot item's expected answer is a sentence, so the check there is that
+    the inflected target occurs in it as a whole token — not that the entire
+    answer is one paradigm cell.
+    """
     for item in db.scalars(select(Item)):
         form = db.get(Form, item.target_form_id)
-        assert form is not None and form.surface == item.expected_answer
+        assert form is not None
+        if item.exercise_type == "free_translation":
+            assert form.surface in item.expected_answer.split()
+        else:
+            assert form.surface == item.expected_answer
 
 
 def test_paradigm_class_splits_what_gender_cannot(db):
@@ -99,8 +108,9 @@ def test_accusative_node_is_stratified(db):
 
 
 def test_routing_table_covers_every_class_the_classifier_emits():
-    emitted = set(ErrorClass) - {ErrorClass.WORD_ORDER, ErrorClass.MISSING_CONSTITUENT}
-    assert emitted <= set(ROUTING)
+    # Every class is reachable now that multi-slot items exist; nothing is
+    # excepted, so a new class added without a routing entry fails here.
+    assert set(ErrorClass) <= set(ROUTING)
 
 
 def test_wrong_case_fails_the_rule_and_leaves_the_form_alone(db, user):

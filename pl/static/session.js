@@ -45,8 +45,13 @@ function render() {
   if (index >= queue.length) return finish();
 
   const item = queue[index];
-  const isChoice = item.exercise_type === "mcq";
-  const sentence = item.prompt.includes("___")
+  const isChoice = item.exercise_type === "mcq" || item.exercise_type === "aspect_choice";
+  // Free translation shows no Polish at all — the learner produces the whole
+  // sentence — so its input is the answer field, not a gap inside a template.
+  const isFree = item.exercise_type === "free_translation";
+  const sentence = isFree
+    ? '<input id="answer" class="wide" autocomplete="off" autocapitalize="off" spellcheck="false">'
+    : item.prompt.includes("___")
     ? item.prompt.replace(
         "___",
         isChoice ? "<u>&nbsp;&nbsp;&nbsp;&nbsp;</u>" : '<input id="answer" autocomplete="off" autocapitalize="off" spellcheck="false">'

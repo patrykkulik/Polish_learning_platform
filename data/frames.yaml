@@ -25,28 +25,28 @@
 - key: TO_JEST
   exercise_type: cloze
   template: "To jest ___."
-  gloss: "This is a {gloss}."
+  gloss: "This is the {gloss}."
   case: nom
   rule_key: NOM_PREDICATE
 
 - key: TU_JEST
   exercise_type: cloze
   template: "Tu jest ___."
-  gloss: "Here is a {gloss}."
+  gloss: "Here is the {gloss}."
   case: nom
   rule_key: NOM_PREDICATE
 
 - key: WIDZE
   exercise_type: cloze
   template: "Widzę ___."
-  gloss: "I see a {gloss}."
+  gloss: "I see the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
 
 - key: MAM
   exercise_type: cloze
   template: "Mam ___."
-  gloss: "I have a {gloss}."
+  gloss: "I have the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
 
@@ -60,7 +60,7 @@
 - key: KUPUJE
   exercise_type: cloze
   template: "Kupuję ___."
-  gloss: "I am buying a {gloss}."
+  gloss: "I am buying the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
 
@@ -80,7 +80,7 @@
 - key: MCQ_ACC
   exercise_type: mcq
   template: "Widzę ___."
-  gloss: "I see a {gloss}."
+  gloss: "I see the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   distractor_cases: [nom, gen, loc]
@@ -102,7 +102,7 @@
 - key: INST_PREDICATE
   exercise_type: cloze
   template: "Jestem ___."
-  gloss: "I am a {gloss}."
+  gloss: "I am the {gloss}."
   case: inst
   rule_key: INST
   themes: [people]
@@ -197,3 +197,34 @@
   rule_key: ASPECT_CHOICE
   aspect: perf
   cell: {pos: praet, number: sg, gender: m1}
+
+# --------------------------------------------------------- free translation
+# The learner types the whole sentence, so nothing Polish appears in the prompt.
+# `sentence` is the expected answer with {form} standing in for the inflected
+# target; every other token is fixed context. This is the first exercise type
+# that can produce WORD_ORDER or MISSING_CONSTITUENT, because it is the first
+# where the learner controls more than one position.
+- key: FREE_WIDZE
+  exercise_type: free_translation
+  template: ""
+  sentence: "Widzę {form}"
+  gloss: "Say in Polish: I see the {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+- key: FREE_MAM
+  exercise_type: free_translation
+  template: ""
+  sentence: "Mam {form}"
+  gloss: "Say in Polish: I have the {gloss}."
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+
+- key: FREE_IDE_DO
+  exercise_type: free_translation
+  template: ""
+  sentence: "Idę do {form}"
+  gloss: "Say in Polish: I am going to the {gloss}."
+  case: gen
+  rule_key: GEN_PREPOSITION
+  themes: [venue]

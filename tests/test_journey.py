@@ -357,3 +357,68 @@ def test_aspect_items_offer_exactly_the_pair(db):
             f"{item.expected_answer!r} is {lexeme.aspect}, but 'Codziennie' is habitual"
         )
         assert lexeme.aspect_partner_id is not None, "a verb shipped without its pair"
+
+
+def test_free_translation_items_have_a_slot_per_token(db):
+    """Multi-slot items carry their expected analysis per position.
+
+    A single-slot cloze can hold its answer in one column. A whole typed
+    sentence cannot: grading it means knowing what was expected at each
+    position, which is the only way `WORD_ORDER` and `MISSING_CONSTITUENT` can
+    ever be distinguished from a lexical error.
+    """
+    from pl.models import ItemSlot
+
+    items = list(
+        db.scalars(select(Item).where(Item.exercise_type == "free_translation"))
+    )
+    assert items, "no free-translation items were built"
+
+    for item in items:
+        slots = list(
+            db.scalars(
+                select(ItemSlot)
+                .where(ItemSlot.item_id == item.id)
+                .order_by(ItemSlot.slot_index)
+            )
+        )
+        assert len(slots) >= 2, f"{item.expected_answer!r} has {len(slots)} slot(s)"
+        assert [s.slot_index for s in slots] == list(range(len(slots)))
+        # The slots must reconstruct the expected answer exactly.
+        assert " ".join(s.expected_surface for s in slots) == item.expected_answer
+        # Exactly one slot is the inflected target; the rest are fixed context.
+        assert sum(1 for s in slots if s.target_form_id is not None) == 1
+
+
+def _free_item(db, lemma: str, starts: str):
+    from pl.models import Lexeme
+
+    lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
+    for item in db.scalars(
+        select(Item).where(Item.exercise_type == "free_translation")
+    ):
+        form = db.get(Form, item.target_form_id)
+        if form.lexeme_id == lexeme.id and item.expected_answer.startswith(starts):
+            return item
+    raise LookupError(f"no free-translation item for {lemma}")
+
+
+def test_a_whole_sentence_is_graded_position_by_position(db):
+    """The two error classes single-slot items cannot produce.
+
+    Right words in the wrong order is a different mistake from the wrong word,
+    and a missing word is a third. All three look identical to a grader that
+    only knows one expected string, which is why they waited for multi-slot
+    items rather than being approximated earlier.
+    """
+    from pl.api import grade_item
+    from pl.domain import ErrorClass
+
+    item = _free_item(db, "kot:Sm2", "Widzę")
+    assert item.expected_answer == "Widzę kota"
+
+    assert grade_item(db, item, "Widzę kota").error_class is ErrorClass.CORRECT
+    assert grade_item(db, item, "kota Widzę").error_class is ErrorClass.WORD_ORDER
+    assert grade_item(db, item, "Widzę").error_class is ErrorClass.MISSING_CONSTITUENT
+    # A real inflection error inside the sentence is still diagnosed as itself.
+    assert grade_item(db, item, "Widzę kot").error_class is ErrorClass.ANIMACY

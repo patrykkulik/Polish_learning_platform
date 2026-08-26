@@ -28,8 +28,8 @@ from pl import tags
 from pl.content import ingest
 from pl.domain import ExpectedSlot
 from pl.domain import Form as DomainForm
-from pl.grade import classify, explain
-from pl.models import AppUser, Attempt, Form, Item, Lexeme, Node
+from pl.grade import classify, classify_sentence, explain
+from pl.models import AppUser, Attempt, Form, Item, ItemSlot, Lexeme, Node
 from pl.schedule import apply_diagnosis
 
 HERE = Path(__file__).resolve().parent
@@ -75,6 +75,35 @@ def expected_slot(db, item: Item) -> ExpectedSlot:
         if f.surface == target.surface and f.tag.raw == target.morph_tag
     )
     return ExpectedSlot(expected=expected, paradigm=paradigm)
+
+
+def grade_item(db, item: Item, submitted: str):
+    """Grade one submission, whichever kind of item it is.
+
+    Single-slot items hold their whole expectation in `target_form_id`.
+    Multi-slot items hold one `item_slot` row per token, and the position
+    carrying the inflected target is graded by the same six-step classifier —
+    so a case error inside a sentence is still diagnosed as a case error.
+    """
+    if item.exercise_type != "free_translation":
+        return classify(expected_slot(db, item), submitted)
+
+    slots = list(
+        db.scalars(
+            select(ItemSlot)
+            .where(ItemSlot.item_id == item.id)
+            .order_by(ItemSlot.slot_index)
+        )
+    )
+    target_index = next(
+        i for i, s in enumerate(slots) if s.target_form_id is not None
+    )
+    return classify_sentence(
+        [s.expected_surface for s in slots],
+        target_index,
+        expected_slot(db, item),
+        submitted,
+    )
 
 
 def _serialise(db, item: Item) -> dict:
@@ -133,7 +162,7 @@ def submit(payload: Submission):
         db.add(attempt)
         db.flush()
 
-        diagnosis = classify(expected_slot(db, item), payload.answer)
+        diagnosis = grade_item(db, item, payload.answer)
         applied = apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
         db.commit()
 

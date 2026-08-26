@@ -28,6 +28,7 @@ product exists to teach — from being written off as typos.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Final
 
 from pl import morph
@@ -200,6 +201,56 @@ def _is_animacy_error(slot: ExpectedSlot, observed: MorphTag) -> bool:
     if animacy == "inanimate":
         return "gen" in observed.case
     return False
+
+
+def classify_sentence(
+    expected: Sequence[str],
+    target_index: int,
+    target: ExpectedSlot,
+    submitted: str,
+) -> Diagnosis:
+    """Diagnose a whole typed sentence, position by position.
+
+    Three checks the single-slot classifier cannot make, in the order that keeps
+    each one meaningful:
+
+    1. **Too few tokens** — something is absent, and absence is not a wrong word.
+    2. **The right tokens in the wrong order** — the learner knows every form and
+       has mis-ordered them, which is a syntax lesson, not a morphology one.
+       Checked as a multiset before position-by-position comparison, because
+       every position after a transposition looks wrong individually.
+    3. **Position by position** — and the position carrying the inflected target
+       goes through the full six-step classifier, so a case error inside a
+       sentence is still diagnosed as a case error rather than flattened to
+       "wrong sentence".
+
+    Pure, like `classify`: the caller supplies the expected surfaces and the
+    target's paradigm.
+    """
+    tokens = normalise(submitted).split()
+    wanted = [normalise(surface) for surface in expected]
+
+    def result(error_class: ErrorClass) -> Diagnosis:
+        return Diagnosis(error_class=error_class, submitted=submitted, slot=target)
+
+    if len(tokens) < len(wanted):
+        return result(ErrorClass.MISSING_CONSTITUENT)
+
+    if tokens != wanted and sorted(tokens) == sorted(wanted):
+        return result(ErrorClass.WORD_ORDER)
+
+    for index, (token, want) in enumerate(zip(tokens, wanted, strict=False)):
+        if token == want:
+            continue
+        if index == target_index:
+            return classify(target, token)
+        # A fixed word the learner altered. Nothing in the paradigm explains it,
+        # so it is a lexical substitution rather than an inflection error.
+        return result(ErrorClass.LEXICAL)
+
+    if len(tokens) > len(wanted):
+        return result(ErrorClass.WORD_ORDER)
+    return result(ErrorClass.CORRECT)
 
 
 def classify(slot: ExpectedSlot, submitted: str) -> Diagnosis:
