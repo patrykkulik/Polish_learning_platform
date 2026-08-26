@@ -422,3 +422,31 @@ def test_a_whole_sentence_is_graded_position_by_position(db):
     assert grade_item(db, item, "Widzę").error_class is ErrorClass.MISSING_CONSTITUENT
     # A real inflection error inside the sentence is still diagnosed as itself.
     assert grade_item(db, item, "Widzę kot").error_class is ErrorClass.ANIMACY
+
+
+def test_vocabulary_distractors_are_nouns(db):
+    """A distractor must be a plausible answer to the question being asked.
+
+    A verb's paradigm contains participles, and a participle carries case — so a
+    naive nominative lookup over every lexeme offers `nieprzeczytana` as a
+    candidate answer to "which word means coffee?". The learner can then rule it
+    out on shape alone, which teaches them to read shapes rather than meanings.
+    """
+    from pl.models import Form as FormRow
+    from pl.models import Lexeme
+
+    noun_surfaces = {
+        row.surface
+        for row in db.scalars(
+            select(FormRow).join(Lexeme, Lexeme.id == FormRow.lexeme_id)
+            .where(Lexeme.pos == "subst")
+        )
+    }
+    vocab = db.scalars(
+        select(Item).join(Node, Node.id == Item.node_id).where(Node.type == "vocabulary")
+    )
+    for item in vocab:
+        for option in item.options_json or []:
+            assert option in noun_surfaces, (
+                f"{option!r} is offered as a noun but is not a form of any noun"
+            )

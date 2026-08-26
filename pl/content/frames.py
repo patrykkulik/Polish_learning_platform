@@ -149,6 +149,7 @@ def build_items(db: Session) -> list[Item]:
     # what a form-selection MCQ is — collides with it and is dropped.
     rule_cases = rule_stratification()
     themes = lexeme_themes()
+    noms = _noun_nominatives(db)
 
     preexisting = {
         (i.exercise_type, i.prompt, i.expected_answer)
@@ -170,8 +171,7 @@ def build_items(db: Session) -> list[Item]:
                 continue
 
             if frame.get("vocabulary"):
-                item = _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes,
-                                     glosses, rng)
+                item = _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng)
             elif frame["exercise_type"] == "free_translation":
                 item = _free_item(frame, lexeme, cells, gloss, patterns, rule_cases)
             elif frame["exercise_type"] == "aspect_choice":
@@ -345,19 +345,18 @@ def _aspect_item(db, frame, lexeme, cells, gloss, patterns, rule_cases) -> Item 
     )
 
 
-def _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes, glosses, rng) -> Item | None:
+def _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng) -> Item | None:
     """Meaning recall, under the vocabulary node — the only M1 item scoring a
     lexical card."""
-    target = _cell(cells, "nom")
+    # Nouns only, for the answer as well as the distractors. A verb's paradigm
+    # contains participles and a participle carries case, so a plain nominative
+    # lookup builds "which word means to read? — czytająca" and calls it
+    # vocabulary.
+    target = _match(cells, {"pos": "subst", "number": "sg", "case": "nom"})
     if target is None:
         return None
 
-    pool = [
-        _nominative(l, glosses)
-        for l in lexemes
-        if l.id != lexeme.id
-    ]
-    pool = [p for p in pool if p]
+    pool = [surface for lex_id, surface in noms.items() if lex_id != lexeme.id]
     if len(pool) < frame.get("distractor_lexemes", 3):
         return None
     distractors = rng.sample(pool, frame.get("distractor_lexemes", 3))
@@ -377,19 +376,27 @@ def _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes, glosses, rng) -> 
     )
 
 
-_NOM_CACHE: dict[int, str] = {}
+def _noun_nominatives(db: Session) -> dict[int, str]:
+    """Nominative singulars, for vocabulary distractors — **nouns only**.
 
+    A verb's paradigm contains participles, and a participle carries case, so a
+    plain nominative lookup over every lexeme happily returns `nieprzeczytana`
+    and offers it as a candidate answer to "which word means coffee?". The
+    distractor pool has to be drawn from the part of speech the question asks
+    about.
 
-def _nominative(lexeme: Lexeme, glosses) -> str | None:
-    return _NOM_CACHE.get(lexeme.id)
-
-
-def _prime_nominatives(db: Session) -> None:
-    for lexeme in db.scalars(select(Lexeme)):
+    Computed per build rather than cached at module level. The cache this
+    replaces was keyed on lexeme id and never cleared, so a second database in
+    the same process — every test after the first — drew its distractors from a
+    previous database's lexemes.
+    """
+    out: dict[int, str] = {}
+    for lexeme in db.scalars(select(Lexeme).where(Lexeme.pos == "subst")):
         cells = list(db.scalars(select(Form).where(Form.lexeme_id == lexeme.id)))
-        cell = _cell(cells, "nom")
+        cell = _match(cells, {"pos": "subst", "number": "sg", "case": "nom"})
         if cell is not None:
-            _NOM_CACHE[lexeme.id] = cell.surface
+            out[lexeme.id] = cell.surface
+    return out
 
 
 def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> None:
@@ -423,5 +430,4 @@ def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> N
 
 
 def build(db: Session) -> list[Item]:
-    _prime_nominatives(db)
     return build_items(db)
