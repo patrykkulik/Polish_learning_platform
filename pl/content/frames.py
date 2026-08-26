@@ -12,6 +12,7 @@ every generated item's expected surface must be a real form of its lexeme.
 from __future__ import annotations
 
 import random
+import re
 from pathlib import Path
 
 import yaml
@@ -28,7 +29,7 @@ from pl.content.ingest import (
 )
 from pl.content.validate import validate
 from pl.domain import MULTI_SLOT
-from pl.grade.classify import tokenise
+from pl.grade.classify import normalise, tokenise
 from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
@@ -240,7 +241,6 @@ def build_items(db: Session) -> list[Item]:
     db.flush()
     _build_slots(db, created)
     _assert_expected_answers_are_real_forms(db, created)
-    db.commit()
     return created
 
 
@@ -478,6 +478,40 @@ def _allowed_lemmas() -> set[str]:
     return lexemes | function_words
 
 
+def _sentences() -> list[dict]:
+    """The authored corpus. Separate so a test can substitute one."""
+    return yaml.safe_load((DATA / "sentences.yaml").read_text(encoding="utf-8"))
+
+
+def _blank(text: str, target: str) -> str:
+    """Replace the target **token** with a blank.
+
+    A plain `str.replace` was wrong twice over. It is case-sensitive, and targets
+    are stored as paradigm cells — which are lower-case — so a sentence-initial
+    target matched nothing and the sentence was returned verbatim, showing the
+    learner the answer. And it matches substrings, so blanking `ma` in `Mama ma
+    kota.` produced `M___ma ma kota.`
+
+    Raising on a miss is the point: the failure mode being closed is a prompt
+    that silently contains its own answer, so there is no safe fall-through.
+    """
+    wanted = normalise(target)
+    out: list[str] = []
+    blanked = False
+    for piece in re.split(r"(\w+)", text, flags=re.UNICODE):
+        if not blanked and normalise(piece) == wanted and piece.strip():
+            out.append("___")
+            blanked = True
+        else:
+            out.append(piece)
+    if not blanked:
+        raise AssertionError(
+            f"target {target!r} does not occur as a whole token in {text!r}, "
+            f"so the prompt would have been shown with the answer still in it"
+        )
+    return "".join(out)
+
+
 def build_sentence_items(db: Session) -> list[Item]:
     """Authored sentences become contextual cloze items — after validation.
 
@@ -502,9 +536,11 @@ def build_sentence_items(db: Session) -> list[Item]:
         for i in db.scalars(select(Item))
     }
     created: list[Item] = []
-    seen: set[str] = set()
+    #: Accepted sentences, each mapped to the target it drills — the duplicate
+    #: check needs both to tell a paradigm drill from a clone.
+    seen: dict[str, str] = {}
 
-    for entry in yaml.safe_load((DATA / "sentences.yaml").read_text(encoding="utf-8")):
+    for entry in _sentences():
         problems = validate(
             entry["text"],
             target=entry["target"],
@@ -516,7 +552,7 @@ def build_sentence_items(db: Session) -> list[Item]:
                 f"sentence {entry['text']!r} rejected: "
                 f"{[str(p) for p in problems]}"
             )
-        seen.add(entry["text"])
+        seen[entry["text"]] = entry["target"]
 
         lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == entry["lemma"]))
         if lexeme is None:
@@ -541,7 +577,7 @@ def build_sentence_items(db: Session) -> list[Item]:
                 f"({entry['rule_key']}, {stratum})"
             )
 
-        prompt = entry["text"].replace(entry["target"], "___", 1)
+        prompt = _blank(entry["text"], entry["target"])
         key = ("cloze", prompt, target.surface)
         if key in existing:
             continue
@@ -585,9 +621,24 @@ def build_sentence_items(db: Session) -> list[Item]:
 
     db.flush()
     _build_slots(db, created)
-    db.commit()
+    # The same criterion-16 assertion `build_items` makes. Redundant today —
+    # the checks above already imply it for both shapes this builder emits —
+    # but the guarantee must not depend on which builder produced a row, or a
+    # later change to either path drops it silently.
+    _assert_expected_answers_are_real_forms(db, created)
     return created
 
 
 def build(db: Session) -> list[Item]:
-    return build_items(db) + build_sentence_items(db)
+    """The whole build, or none of it.
+
+    Neither half commits. `build_items` used to, so a corpus error raised inside
+    `build_sentence_items` left a database holding template items, the strata
+    `ensure_patterns` had already created for sentences that were then rejected,
+    and no sentence items — a state indistinguishable downstream from a build
+    that had simply finished. The rollback is the caller's, and a caller that
+    lets the exception escape gets one from the session's own context.
+    """
+    items = build_items(db) + build_sentence_items(db)
+    db.commit()
+    return items

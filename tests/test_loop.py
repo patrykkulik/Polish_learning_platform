@@ -312,3 +312,73 @@ def test_debt_is_served_before_anything_new(db, user):
     _items, stats = build_session(db, user.id, {"tz": "UTC"}, limit=20)
     assert stats["debt_total"] > 0
     assert stats["introduced"] == 0
+
+
+# ------------------------------------------------- the build's own invariants
+
+
+def test_the_blank_replaces_a_whole_token_not_a_substring():
+    """`str.replace` finds the target inside a longer word and blanks that.
+
+    `Mama ma kota.` blanked for `ma` produced `M___ma ma kota.` — the exercise
+    is nonsense and the answer is still sitting in the prompt.
+    """
+    assert frames._blank("Mama ma kota.", "ma") == "Mama ___ kota."
+
+
+def test_the_blank_finds_a_sentence_initial_target():
+    """Targets are stored as paradigm cells, which are lower-case; a sentence
+    capitalises its first word. A case-sensitive replace matched nothing, so the
+    prompt was returned verbatim — showing the learner the answer."""
+    assert frames._blank("Kota nie ma.", "kota") == "___ nie ma."
+
+
+def test_a_target_that_is_absent_is_a_build_error():
+    """Never a silent pass-through: that is exactly the leak."""
+    with pytest.raises(AssertionError, match="does not occur"):
+        frames._blank("Widzę psa.", "kota")
+
+
+def test_no_prompt_contains_its_own_answer(db):
+    """The property the blanking exists to guarantee, over the real corpus."""
+    for item in db.scalars(select(Item).where(Item.exercise_type == "cloze")):
+        assert "___" in item.prompt, f"{item.prompt!r} has no blank"
+        assert item.expected_answer.casefold() not in item.prompt.casefold(), (
+            f"prompt {item.prompt!r} leaks its answer {item.expected_answer!r}"
+        )
+
+
+def test_a_rejected_sentence_leaves_no_half_built_database(monkeypatch):
+    """The build is one transaction or it is a trap.
+
+    `build_items` used to commit before `build_sentence_items` ran, so a corpus
+    error left a database holding template items and no sentence items — a state
+    that looks like a successful build to everything downstream.
+    """
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False, future=True)()
+    ingest.ingest_all(session)
+
+    monkeypatch.setattr(
+        frames,
+        "_sentences",
+        lambda: [
+            {
+                "text": "Widzę zzzzz.",
+                "target": "zzzzz",
+                "lemma": "kot:Sm2",
+                "case": "acc",
+                "rule_key": "acc.direct-object",
+                "gloss": "nonsense",
+            }
+        ],
+    )
+    with pytest.raises(AssertionError):
+        frames.build(session)
+
+    session.rollback()
+    assert session.scalar(select(func.count()).select_from(Item)) == 0, (
+        "a failed build committed items anyway"
+    )
+    session.close()

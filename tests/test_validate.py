@@ -64,20 +64,75 @@ def test_the_authored_corpus_passes_its_own_validator():
     rejected on first run: two used words outside the curriculum, one named a
     lexeme that did not exist, and one was a near-duplicate of another.
     """
-    import yaml
-
-    from pl.content.frames import DATA, _allowed_lemmas
+    from pl.content.frames import _allowed_lemmas, _sentences
 
     allowed = _allowed_lemmas()
-    corpus: set[str] = set()
+    corpus: dict[str, str] = {}
     rejected: list[tuple[str, list[str]]] = []
 
-    for entry in yaml.safe_load((DATA / "sentences.yaml").read_text(encoding="utf-8")):
+    for entry in _sentences():
         problems = validate(
             entry["text"], target=entry["target"], allowed=allowed, corpus=corpus
         )
         if problems:
             rejected.append((entry["text"], [str(p) for p in problems]))
-        corpus.add(entry["text"])
+        corpus[entry["text"]] = entry["target"]
 
     assert not rejected, f"committed sentences fail validation: {rejected}"
+
+
+def test_a_reordered_sentence_is_a_near_duplicate():
+    """The check has to fire at the lengths this level actually uses.
+
+    A ratio over token sets cannot reach 0.8 below five tokens: a three-token
+    sentence differing by one word scores 0.667, a four-token one 0.75. The
+    stage was accepting template clones and reporting a clean build.
+    """
+    corpus = {"Brat czyta książkę.": "książkę"}
+    assert Rejection.NEAR_DUPLICATE in validate(
+        "Książkę czyta brat.", target="książkę", allowed=ALLOWED, corpus=corpus
+    )
+
+
+def test_a_one_word_swap_is_a_near_duplicate():
+    corpus = {"Brat czyta książkę.": "książkę"}
+    assert Rejection.NEAR_DUPLICATE in validate(
+        "Kot czyta książkę.", target="książkę", allowed=ALLOWED | {"kot"}, corpus=corpus
+    )
+
+
+def test_a_genuinely_different_sentence_is_not_a_duplicate():
+    """The check must not reject everything — that would be as useless."""
+    corpus = {"Brat czyta książkę.": "książkę"}
+    assert Rejection.NEAR_DUPLICATE not in validate(
+        "Kot jest w parku.",
+        target="parku",
+        allowed=ALLOWED | {"kot", "być", "w"},
+        corpus=corpus,
+    )
+
+
+def test_a_repeated_word_does_not_shrink_its_own_denominator():
+    """Compared as multisets: a set lets a repeated token inflate the ratio."""
+    corpus = {"Brat czyta książkę i brat czyta książkę.": "książkę"}
+    problems = validate(
+        "Brat czyta książkę.", target="książkę", allowed=ALLOWED, corpus=corpus
+    )
+    assert Rejection.NEAR_DUPLICATE not in problems
+
+
+def test_a_substitution_drill_is_not_a_duplicate():
+    """The same frame with a different target is what a case drill *is*.
+
+    `Nie mam czasu` and `Nie mam książki` teach two different genitives. A rule
+    that rejected the second would make paradigm coverage impossible: at three
+    to five tokens there are not enough distinct frames in an A1 vocabulary to
+    give every noun its own.
+    """
+    corpus = {"Nie mam czasu.": "czasu"}
+    assert Rejection.NEAR_DUPLICATE not in validate(
+        "Nie mam książki.",
+        target="książki",
+        allowed=ALLOWED | {"nie", "mieć", "czas"},
+        corpus=corpus,
+    )

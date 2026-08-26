@@ -16,6 +16,8 @@ strings from wherever — an API, a file, a person — and are judged the same w
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pl import morph
@@ -49,7 +51,7 @@ def validate(
     target: str,
     allowed: set[str],
     max_tokens: int = MAX_TOKENS,
-    corpus: set[str] | None = None,
+    corpus: Mapping[str, str] | None = None,
 ) -> list[Rejection]:
     """Every reason to refuse `text`, or an empty list.
 
@@ -58,7 +60,9 @@ def validate(
     through repeated builds.
 
     `allowed` holds base lemmas: the curriculum's lexemes plus the function words
-    a natural sentence cannot avoid.
+    a natural sentence cannot avoid. `corpus` maps each already-accepted sentence
+    to the target it drills, which the duplicate check needs to tell a paradigm
+    drill apart from a clone.
     """
     problems: list[Rejection] = []
     tokens = tokenise(text)
@@ -88,25 +92,57 @@ def validate(
     if out_of_vocabulary:
         problems.append(Rejection.OUT_OF_VOCABULARY)
 
-    if corpus is not None and _is_near_duplicate(tokens, corpus):
+    if corpus is not None and _is_near_duplicate(tokens, target, corpus):
         problems.append(Rejection.NEAR_DUPLICATE)
 
     return problems
 
 
-def _is_near_duplicate(tokens: list[str], corpus: set[str]) -> bool:
+#: A candidate differing from an existing sentence by at most this many tokens
+#: is a variant, not a new sentence — **when both drill the same target**.
+#: Absolute rather than proportional because A1 sentences are three to five
+#: tokens long: a ratio of 0.8 over token sets cannot be reached below five
+#: tokens at all — a three-token sentence differing by one word scores 0.667 —
+#: so a proportional test alone silently accepts every template clone at exactly
+#: the lengths this level uses.
+MAX_SHARED_TOKEN_DIFFERENCE = 1
+
+#: For longer sentences, where the absolute rule would be too strict. Applies
+#: whatever the target, since at these lengths near-identity is near-identity.
+MAX_OVERLAP_RATIO = 0.8
+
+
+def _is_near_duplicate(
+    tokens: list[str], target: str, corpus: Mapping[str, str]
+) -> bool:
     """True when the corpus already holds something this close.
 
-    Compared as token *sets*, so a sentence that only reorders or swaps one word
-    of an existing one is caught. Exact-match deduplication would let a corpus
-    fill up with trivial variants and call it coverage.
+    Compared as **multisets**: a repeated word would otherwise shrink its own
+    denominator and inflate the ratio.
+
+    Two rules, because one does not cover the range. The strict absolute rule is
+    scoped to sentences drilling the *same target*, and that scope is the whole
+    point rather than a concession. Holding a frame constant while varying the
+    word under test is what a case drill **is** — `Nie mam czasu` and `Nie mam
+    książki` teach two different genitives, and a corpus that cannot contain both
+    cannot cover a paradigm. What is worthless is the same answer asked twice in
+    almost the same words, and that is what the scoped rule catches.
     """
-    candidate = set(tokens)
-    for existing in corpus:
-        other = set(tokenise(existing))
+    candidate = Counter(tokens)
+    wanted = normalise(target)
+    for existing, drilled in corpus.items():
+        other = Counter(tokenise(existing))
         if not other:
             continue
-        overlap = len(candidate & other) / max(len(candidate), len(other))
-        if overlap >= 0.8:
+
+        if normalise(drilled) == wanted:
+            # Reordering alone leaves this at zero; a single substitution leaves
+            # it at two — one token gone, one arrived — so the bound is doubled.
+            differing = sum(((candidate - other) + (other - candidate)).values())
+            if differing <= MAX_SHARED_TOKEN_DIFFERENCE * 2:
+                return True
+
+        shared = sum((candidate & other).values())
+        if shared / max(candidate.total(), other.total()) >= MAX_OVERLAP_RATIO:
             return True
     return False
