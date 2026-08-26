@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 190 passing | — |
+| Test suite | 236 passing | — |
 
 Measured while proving it:
 
@@ -34,11 +34,13 @@ populations, session composition, streak, and a review screen.
 
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
-aspect taught from the first verb as pairs. 69 lexemes, 25 frames, **960 items**
-across five exercise types — cloze, form-selection multiple choice, meaning
-recall, a preposition drill, aspect choice and free translation — all generated
-with no LLM and no human review. Multi-slot items bring the two error classes a
-single blank cannot produce: `WORD_ORDER` and `MISSING_CONSTITUENT`.
+aspect taught from the first verb as pairs. 76 lexemes, 25 frames, 32 authored
+sentences, **1,024 items** across six exercise types — cloze (678),
+free translation (131), multiple choice (113, covering both form selection and
+meaning recall), preposition drill (58), listening dictation (26) and aspect
+choice (18) — all generated with no LLM and no human review. Multi-slot items
+bring the two error classes a single blank cannot produce: `WORD_ORDER` and
+`MISSING_CONSTITUENT`.
 
 **Content pipeline and audio.** The design's pipeline is generate → validate →
 review → speak. `pl/content/validate.py` implements the validation stage and
@@ -50,6 +52,15 @@ cached to disk.
 
 Not built: blob storage and a CDN (deployment concerns, not development ones);
 the React PWA (deferred — no capability gain over the current page).
+
+**Two things are built and not reachable, and you would hit both on first use.**
+The learner stops meeting new material on day four — criterion 9 forbids
+introducing anything while a review is overdue, and once enough cards exist for
+one to fall due daily that condition never clears again. And all 26
+listening-dictation items are unreachable: each shares both referents with the
+cloze from the same sentence, and the queue serves the lower id, which is always
+the cloze. Both are the composition rules working as specified, which is why
+neither is a one-line fix. Design doc §"Known defects" has the full list.
 
 ## Quick start
 
@@ -166,15 +177,15 @@ pl/schedule.py        FSRS, and the error-class -> card routing table
 pl/session.py         debt -> remediation -> new, and the unlock gate
 pl/streak.py          both conditions, in the learner's own timezone
 pl/api.py             JSON API; grading never runs in the browser
-
-data/lexemes.yaml     57 nouns + 6 aspect pairs, hand-curated
-data/nodes.yaml       the skill DAG
-data/frames.yaml      25 authored frames
-data/sentences.yaml   32 authored sentences, validated at build time
-data/function_words.yaml  lemmas the whitelist has to admit
 pl/content/validate.py  the pipeline's automated stage
 pl/audio.py           the only module that knows how speech is made
-tests/data/golden.yaml  the kill-gate corpus
+
+data/lexemes.yaml     76 lexemes — 58 nouns and 18 verbs in 9 aspect pairs
+data/nodes.yaml       the skill DAG — 13 nodes
+data/frames.yaml      25 authored frames
+data/sentences.yaml   32 authored sentences, validated at build time
+data/function_words.yaml  40 lemmas the whitelist has to admit
+tests/data/golden.yaml  the kill-gate corpus — 65 cases
 ```
 
 `pl/grade` imports no I/O of any kind. `ExpectedSlot` carries the expected

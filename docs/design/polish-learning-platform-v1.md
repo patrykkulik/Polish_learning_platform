@@ -4,12 +4,22 @@ A morphology-first Polish course for English-speaking adults: a DAG of skill nod
 over three card populations, and a grader that parses what the learner typed and names the
 grammatical decision they got wrong.
 
-**Design revision 3**, against `polish-learning-platform-spec.md` draft v0.1 (2026-08-24).
+**Design revision 4**, against `polish-learning-platform-spec.md` draft v0.1 (2026-08-24).
 
 **Status: M0 and M1 are built. M2 is partly built.** This document is no longer purely
 forward-looking — where implementation settled a question, the answer is recorded here as fact rather
 than as intent, and where implementation contradicted the design, the design is corrected rather than
 quietly left wrong. §"Known defects" lists what is broken and unfixed.
+
+Revision 4 was written after a three-pass review of the M2 work and corrects this document against
+the code rather than against itself. **Multi-slot items are built** and were still recorded as "not
+built, and genuinely hard"; `item_slot` was missing from §8 entirely; `item.audio_url` was described
+as the audio seam when it is a dead column. Every headline count was re-measured rather than
+adjusted — six were wrong, including a stratification table whose ratio survived but whose numbers
+had moved with the lexeme set. Two defects were removed from §"Known defects" because they were
+fixed, and **two were added that nobody had written down**: the learner stops meeting new material on
+day four, and every listening item is unreachable. Both are the specified rules working as specified,
+which is exactly why they needed recording rather than patching.
 
 Revision 3 folds in what building it taught, corrects the phasing estimates (§"The estimates were
 calibrated to the wrong constraint"), and finally **defines `paradigm_class`**, which revisions 1 and
@@ -611,11 +621,13 @@ sentence around it reads as if the definition is somewhere else.
 
   | Stratification | Accusative node | Locative node |
   |---|---|---|
-  | global, over all five cases | **27 strata** | 27 strata |
-  | per rule | **7 strata** | 24 strata |
+  | global, over all five cases | **33 strata** | 33 strata |
+  | per rule | **8 strata** | 28 strata |
 
-  `Verified:` over 57 lexemes. Under a global key, adding the locative re-partitions the *accusative*
-  node from 7 strata to 27 — so a learner who had mastered the accusative wakes up with two dozen
+  `Verified:` re-measured at this revision over the 58 nouns of 76 lexemes; the figures were 27 and 7
+  at 57 lexemes, and the ratio is what matters, not the absolute count. Under a global key, adding
+  the locative re-partitions the *accusative* node from 8 strata to 33 — so a learner who had
+  mastered the accusative wakes up with two dozen
   strata they have never seen and a node that is no longer mastered. **Strata are content, and the
   unlock gate counts them**, so re-partitioning a rule the learner has already cleared silently
   revokes it. Keying each rule to its own cases means a curriculum edit cannot disturb any rule that
@@ -816,7 +828,11 @@ pattern         ★ id, node_id, rule_key, paradigm_class
                   ── UNIQUE (rule_key, paradigm_class)
 
 item              id, node_id, exercise_type, prompt, expected_answer,
-                  target_form_id, pattern_id ★, source ★, audio_url, difficulty
+                  target_form_id, pattern_id ★, source ★, difficulty,
+                  audio_url  ── declared by spec §8; dead ★ (see below)
+item_slot       ★ id, item_id, slot_index, expected_surface, target_form_id
+                  ── UNIQUE (item_id, slot_index); multi-slot items only
+                  ── target_form_id null = fixed context, set = the graded target
 item_variant      item_id, accepted_answer, source(authored|promoted)
 user              id, email, created_at, settings_json   ── settings_json.tz : IANA
 
@@ -853,8 +869,19 @@ streak            user_id, current, longest, freezes, last_completed_on
 - **`item.pattern_id`** — the routing table needs to know which pattern card an item exercises. It is
   not derivable from `node_id`, which is one-to-many over patterns.
 - **`item.source`** — the declared M2 seam for LLM-generated content.
+- **`item_slot`** — a single-blank cloze holds its answer in `item.expected_answer` and its analysis
+  in `item.target_form_id`. A whole typed sentence has neither, and without knowing what belonged at
+  *each* position `WORD_ORDER` and `MISSING_CONSTITUENT` are indistinguishable from the learner
+  simply using the wrong word. Written for the two multi-slot exercise types only; 379 rows today.
+- **`item.audio_url` is dead.** Spec §8 declares it, the model still carries it, and nothing reads or
+  writes it. Audio turned out not to need a per-item column: a rendering is identified by
+  `(engine, voice, rate, text)` hashed into a cache filename, so `/api/audio/{item_id}` derives the
+  path on demand and a re-render at a new rate needs no migration. Left in place rather than dropped
+  — removing it is a schema change with no behavioural gain — but recorded here so it is not mistaken
+  for the seam. `pl/audio.py` is the seam.
 - **`error_event.slot_index`** — one submission can carry two errors at different positions. Without
-  it, remediation cannot tell one error from two.
+  it, remediation cannot tell one error from two. Still written as a constant: multi-slot grading
+  returns one diagnosis for the whole sentence, so the column is correct and not yet exercised.
 - **`node_unlock`** — the latch (§"Mastery gates on stability"). A row per unlocked node per user,
   written once at session end. The only representation that survives a moving denominator, which is
   what acceptance criterion 13 now asserts explicitly.
@@ -934,8 +961,25 @@ you alone". That was never about effort. It is about whether anyone opens the th
 Found by review, **unfixed at the time of writing**. Recorded here because a design document that
 describes only the intended system misleads anyone who reads it next to the code.
 
+Two entries have since been removed rather than reworded, and the removals are worth as much as the
+list: `session.js` now checks every response and renders a failure the learner can retry, and
+`pl/api.py` has tests. Everything below was re-verified against the code at this revision — the
+remaining entries are remaining because they are still true, not because nobody looked.
+
 **Would stop a real learner**
 
+- **The learner stops meeting new material on day four.** Criterion 9 forbids introducing anything
+  while a review is overdue. Once enough cards exist for at least one to fall due every day, that
+  condition is permanently true: `introduced` runs 10, 0, 10, and then 0 for good. The learner meets
+  about twenty items and the curriculum stops opening. This is the composition rules working exactly
+  as specified — which is what makes it a design defect rather than a bug. Criterion 9 needs a
+  bound (a debt threshold, or a floor of new items that outranks it), and that is a decision about
+  what the product is for, not a patch.
+- **Listening-dictation items are unreachable.** All 26 exist, are built, are audible and grade
+  correctly, and are never offered. Each shares both of its referents with the cloze built from the
+  same sentence, and debt serves the lowest-id item, which is always the cloze. Pinned by
+  `test_listening_items_are_currently_unreachable`, which is written to be deleted by whoever makes
+  them reachable.
 - `DAILY_NEW_CAP` is enforced per *call*, not per day, and the review screen ships an "Another round"
   button that reloads the page — so the cap grants another ten every time it is pressed. Fixing it
   needs a persistent `Card.created_at`.
@@ -943,8 +987,6 @@ describes only the intended system misleads anyone who reads it next to the code
   and then breaking a streak the freezes had just saved.
 - The streak's daily-goal condition trusts a client-supplied query parameter, on a server that
   already holds the authoritative count in `attempt`.
-- `session.js` has no error handling of any kind — no `res.ok` check, no `try`/`catch`. Any non-2xx
-  response wedges the UI silently.
 - The pattern-card draw ignores the known-lexeme intersection §"Pattern cards are stratified"
   specifies, and is unordered, so it draws the same lexeme every time.
 
@@ -956,17 +998,32 @@ describes only the intended system misleads anyone who reads it next to the code
 
 **Testing and compatibility**
 
-- `pl/streak.py` and `pl/api.py` have no tests, so criteria 12 and 17 are unasserted.
+- `pl/streak.py` has no tests, so criterion 12 is unasserted. `pl/api.py` now has nine, covering
+  criterion 17 and the audio endpoint's failure modes.
 - Criterion 13's unlock test inserts the latch row by hand and reads it back; criterion 16's
-  assertion compares a row to itself.
+  assertion compares a row to itself — `item.expected_answer` was assigned from `form.surface` at
+  build time, so checking one against the other cannot fail. Both builders now run it, which makes
+  the check uniform without making it stronger.
 - The suite runs on SQLite only, and the schema uses generic `JSON` where Postgres wants `JSONB`.
 - Alembic is deferred; `pl/db.py` uses `create_all()`.
 
 **Content**
 
-- 76 lexemes against the ~600 M2 calls for. The locative carries 27 strata over 71 items — about 2.6
-  items per stratum, which makes "the card generalises across its stratum" thin for that node. More
-  lemmas is the fix, not fewer strata.
+- 76 lexemes against the ~600 M2 calls for, and the shortfall lands unevenly. Per-rule stratification
+  keeps each node's partition honest, but a stratum needs items in it before "the card generalises
+  across its stratum" means anything. Measured at this revision:
+
+  | node | strata | items | items/stratum |
+  |------|-------:|------:|--------------:|
+  | N12 aspect | 11 | 18 | 1.6 |
+  | N09 genitive — possession | 3 | 11 | 3.7 |
+  | N11 locative | 28 | 87 | 3.1 |
+  | N07 instrumental | 8 | 34 | 4.3 |
+  | N10 genitive — prepositions | 12 | 47 | 3.9 |
+
+  N12 is the thinnest at 1.6, and it is the node whose cards are hardest to generalise anyway, since
+  an aspect pair is learned pair by pair. More lemmas is the fix, not fewer strata — collapsing
+  strata would restore the false generalisation §"Pattern cards are stratified" exists to prevent.
 - Every Polish frame and gloss is authored here and **wants a native-speaker review**. The inflected
   forms are looked up rather than written and cannot be wrong unless SGJP is; the sentence frames and
   the English glosses around them are not protected that way.
@@ -1041,11 +1098,22 @@ describes only the intended system misleads anyone who reads it next to the code
 - **M2 — A1 complete. Partly built.**
   - **Done:** instrumental (N07); genitive split three ways as spec §4.2 requires — negation (N08),
     possession (N09), prepositions (N10); locative with its palatalisation alternations (N11); aspect
-    pairs entering as pairs with a dedicated two-option choice exercise (N12). 69 lexemes, 22 frames,
-    832 items. Per-rule stratification, without which none of it could be added safely.
-  - **Not built, and genuinely hard:** multi-slot items — `item_slot`, real lattice alignment across
-    several blanks, and the two error classes single-slot items cannot produce (`WORD_ORDER`,
-    `MISSING_CONSTITUENT`). This is the part that is a design-and-build problem rather than volume.
+    pairs entering as pairs with a dedicated two-option choice exercise (N12). 76 lexemes, 25 frames,
+    32 authored sentences, 1,024 items. Per-rule stratification, without which none of it could be
+    added safely.
+  - **Built — multi-slot items.** Recorded here as "not built, and genuinely hard" while it was.
+    `item_slot` carries the expected analysis per position (379 rows); `classify_sentence` diagnoses
+    a whole typed sentence in the order that keeps each check meaningful — absence first, then
+    transposition as a multiset, then position by position with the target's position routed through
+    the full six-step classifier so a case error inside a sentence is still a case error. Both error
+    classes a single blank cannot produce are now reachable: `MISSING_CONSTITUENT` and `WORD_ORDER`.
+    Two exercise types use it — free translation (131 items) and listening dictation (26).
+
+    What made it tractable was declining the hard version. The design asked for "real lattice
+    alignment across several blanks"; positional comparison against a known expected token sequence
+    answers every question the grader actually asks, and the alignment problem never arises. A
+    surplus constituent has no class of its own and is diagnosed `LEXICAL`; giving it one is a change
+    to the taxonomy and the routing table, so it stays a design decision rather than a quiet fix.
   - **Built, and not blocked on Azure after all:** spec §5.2's pipeline. The *validation* stage needs
     no model at all — every check is a morphological or arithmetic fact — and the *generation* stage
     is authored offline and committed, which is exactly what `item.source` was declared for. The
@@ -1057,7 +1125,7 @@ describes only the intended system misleads anyone who reads it next to the code
     audio to many learners; one learner on a laptop is served from disk.
   - **Not built, deferred deliberately:** the React PWA. It replaces the Jinja page against an
     unchanged JSON API and adds no capability, so it buys nothing until there is a reason to want it.
-  - **Still needed:** ~600 lemmas against today's 69, the reviewer, and the cost model that decides
+  - **Still needed:** ~600 lemmas against today's 76, the reviewer, and the cost model that decides
     whether B1 is viable at all. Revisit offline (§"Offline contradicts server-side grading").
 - **M3 — A2.** Dative, vocative. ~1,400 lemmas. Listening and minimal-pair exercises. Auth only if
   path B is live by then.
@@ -1068,11 +1136,11 @@ describes only the intended system misleads anyone who reads it next to the code
 
 ## Estimated Footprint
 
-**As built** (M0 + M1 + the finished part of M2): 34 tracked files, 7,460 lines — `pl/` 18 files /
-3,272 lines, `tests/` 6 files / 1,478 lines, `data/` 3 files / 655 lines, this document 1,170 lines.
-174 tests passing. Three tables added against spec §8 (`pattern`, `attempt`, `node_unlock`) and no
-more; four components deleted from spec §7 (morphology sidecar, Redis, blob/CDN, Azure OpenAI) and
-still absent.
+**As built** (M0 + M1 + the finished part of M2): 41 tracked files, 10,192 lines — `pl/` 20 files /
+4,353 lines, `tests/` 9 files / 2,627 lines, `data/` 5 files / 1,035 lines, this document 1,260
+lines. 236 tests passing. Four tables added against spec §8 (`pattern`, `attempt`, `node_unlock`,
+`item_slot`) and no more; four components deleted from spec §7 (morphology sidecar, Redis, blob/CDN,
+Azure OpenAI) and still absent.
 
 The estimate below is what was planned. It held.
 
