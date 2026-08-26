@@ -26,6 +26,7 @@ from pl.content.ingest import (
     rule_nodes,
     rule_stratification,
 )
+from pl.content.validate import validate
 from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
@@ -127,6 +128,37 @@ def ensure_patterns(db: Session) -> list[Pattern]:
             db.add(pattern)
             existing[(rule, stratum)] = pattern
             created.append(pattern)
+
+    # Authored sentences reach lexeme/rule combinations no frame covers — a
+    # frame restricted by theme leaves gaps a hand-written sentence can fill.
+    # They must create their strata too, or the sentence is silently dropped for
+    # want of a pattern to hang on.
+    node_of_rule = rule_nodes()
+    for entry in yaml.safe_load((DATA / "sentences.yaml").read_text(encoding="utf-8")):
+        rule = entry["rule_key"]
+        lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == entry["lemma"]))
+        if lexeme is None:
+            raise LookupError(
+                f"sentence {entry['text']!r} names lexeme {entry['lemma']!r}, "
+                f"which is not in the lexeme set"
+            )
+        node_key = node_key_for(rule, lexeme, node_of_rule)
+        if node_key is None:
+            raise LookupError(
+                f"sentence {entry['text']!r} uses rule {rule!r}, which claims no "
+                f"node for a {lexeme.gender or lexeme.pos} lexeme"
+            )
+        stratum = morph.paradigm_class(
+            lexeme.lemma, rule_cases[rule], pos=lexeme.pos
+        )
+        if (rule, stratum) in existing:
+            continue
+        pattern = Pattern(
+            node_id=nodes[node_key].id, rule_key=rule, paradigm_class=stratum
+        )
+        db.add(pattern)
+        existing[(rule, stratum)] = pattern
+        created.append(pattern)
 
     db.flush()
     return created
@@ -429,5 +461,109 @@ def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> N
             )
 
 
+def _allowed_lemmas() -> set[str]:
+    """The curriculum's lexemes plus the function words a sentence cannot avoid."""
+    lexemes = {
+        entry["lemma"].split(":", 1)[0]
+        for entry in yaml.safe_load(
+            (DATA / "lexemes.yaml").read_text(encoding="utf-8")
+        )
+    }
+    function_words = set(
+        yaml.safe_load((DATA / "function_words.yaml").read_text(encoding="utf-8"))
+    )
+    return lexemes | function_words
+
+
+def build_sentence_items(db: Session) -> list[Item]:
+    """Authored sentences become contextual cloze items — after validation.
+
+    This is the specification's pipeline with the generation stage run offline
+    and committed rather than called at build time. Everything downstream is
+    unchanged, which is what `item.source` exists to make true: a sentence that
+    arrived from a language model and one that was written by hand are graded,
+    scheduled and remediated identically.
+
+    Validation is a **build error**, not a warning. A sentence containing a word
+    the learner has never met is not a slightly worse exercise — the error it
+    provokes is routed to the grammar node it was supposed to teach, so the
+    remediation loop learns the wrong lesson from it.
+    """
+    allowed = _allowed_lemmas()
+    rule_cases = rule_stratification()
+    patterns = {
+        (p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))
+    }
+    existing = {
+        (i.exercise_type, i.prompt, i.expected_answer)
+        for i in db.scalars(select(Item))
+    }
+    created: list[Item] = []
+    seen: set[str] = set()
+
+    for entry in yaml.safe_load((DATA / "sentences.yaml").read_text(encoding="utf-8")):
+        problems = validate(
+            entry["text"],
+            target=entry["target"],
+            allowed=allowed,
+            corpus=seen,
+        )
+        if problems:
+            raise AssertionError(
+                f"sentence {entry['text']!r} rejected: "
+                f"{[str(p) for p in problems]}"
+            )
+        seen.add(entry["text"])
+
+        lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == entry["lemma"]))
+        if lexeme is None:
+            raise LookupError(f"{entry['lemma']!r} is not in the lexeme set")
+        target = _cell(_cells(db, lexeme), entry["case"])
+        if target is None or target.surface != entry["target"]:
+            raise AssertionError(
+                f"sentence {entry['text']!r} declares target {entry['target']!r}, "
+                f"but the {entry['case']} of {entry['lemma']} is "
+                f"{target.surface if target else None!r}"
+            )
+
+        stratum = morph.paradigm_class(
+            lexeme.lemma, rule_cases[entry["rule_key"]], pos=lexeme.pos
+        )
+        pattern = patterns.get((entry["rule_key"], stratum))
+        if pattern is None:
+            # ensure_patterns walks these same sentences, so a missing pattern
+            # means the two disagree — which is a bug, not a sentence to skip.
+            raise AssertionError(
+                f"sentence {entry['text']!r} has no pattern for "
+                f"({entry['rule_key']}, {stratum})"
+            )
+
+        prompt = entry["text"].replace(entry["target"], "___", 1)
+        key = ("cloze", prompt, target.surface)
+        if key in existing:
+            continue
+        existing.add(key)
+
+        item = Item(
+            node_id=pattern.node_id,
+            pattern_id=pattern.id,
+            exercise_type="cloze",
+            prompt=prompt,
+            gloss=entry["gloss"],
+            expected_answer=target.surface,
+            target_form_id=target.id,
+            options_json=None,
+            # The seam the design declared for exactly this: content that came
+            # from the generation pipeline rather than from a frame.
+            source="generated",
+        )
+        db.add(item)
+        created.append(item)
+
+    db.flush()
+    db.commit()
+    return created
+
+
 def build(db: Session) -> list[Item]:
-    return build_items(db)
+    return build_items(db) + build_sentence_items(db)

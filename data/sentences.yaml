@@ -1,0 +1,246 @@
+# Authored sentences — the pipeline's generation stage, run offline and committed.
+#
+# The specification puts a language model here and forbids it on the request
+# path. For a single learner running locally, the offline batch can simply be
+# *authored*: the output is data, the runtime has no API key and no network
+# call, and the validation stage that follows is identical either way. Nothing
+# downstream can tell the difference, which is the point of `item.source`.
+#
+# Every entry is checked by pl.content.validate before it becomes an item —
+# morphological parse, vocabulary whitelist, length bound, near-duplicate. An
+# entry that fails is a build error, not a warning, because a sentence the
+# learner cannot read routes its error to the grammar node it was meant to teach.
+#
+# `target` is the form the item drills. The rest of the sentence is context, and
+# context is the whole reason these exist: a frame teaches the ending, a sentence
+# teaches the ending somewhere a learner would actually meet it.
+
+# ------------------------------------------------------------ accusative
+- text: "Brat czyta książkę."
+  target: książkę
+  lemma: książka
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "My brother is reading a book."
+
+- text: "Codziennie piję wodę."
+  target: wodę
+  lemma: woda
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "I drink water every day."
+
+- text: "Widzę kota w parku."
+  target: kota
+  lemma: kot:Sm2
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "I see a cat in the park."
+
+- text: "Matka kupuje chleb i ser."
+  target: chleb
+  lemma: chleb
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "Mother is buying bread and cheese."
+
+- text: "Syn je jabłko."
+  target: jabłko
+  lemma: jabłko
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "My son is eating an apple."
+
+- text: "Siostra czyta gazetę."
+  target: gazetę
+  lemma: gazeta
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  gloss: "My sister is reading a newspaper."
+
+# ------------------------------------------------------------ instrumental
+- text: "Brat jest lekarzem."
+  target: lekarzem
+  lemma: lekarz
+  case: inst
+  rule_key: INST
+  gloss: "My brother is a doctor."
+
+- text: "Piję kawę z mlekiem."
+  target: mlekiem
+  lemma: mleko
+  case: inst
+  rule_key: INST
+  gloss: "I drink coffee with milk."
+
+- text: "Idę do parku z bratem."
+  target: bratem
+  lemma: brat
+  case: inst
+  rule_key: INST
+  gloss: "I am going to the park with my brother."
+
+- text: "Idę do szkoły z siostrą."
+  target: siostrą
+  lemma: siostra
+  case: inst
+  rule_key: INST
+  gloss: "I am going to school with my sister."
+
+- text: "Siostra jest nauczycielem."
+  target: nauczycielem
+  lemma: nauczyciel
+  case: inst
+  rule_key: INST
+  gloss: "My sister is a teacher."
+
+# ------------------------------------------------- genitive after negation
+- text: "Nie mam czasu."
+  target: czasu
+  lemma: czas:S
+  case: gen
+  rule_key: GEN_NEGATION
+  gloss: "I do not have time."
+
+- text: "W domu nie ma mleka."
+  target: mleka
+  lemma: mleko
+  case: gen
+  rule_key: GEN_NEGATION
+  gloss: "There is no milk at home."
+
+- text: "Brat nie ma roweru."
+  target: roweru
+  lemma: rower
+  case: gen
+  rule_key: GEN_NEGATION
+  gloss: "My brother does not have a bicycle."
+
+- text: "Dzisiaj nie ma chleba."
+  target: chleba
+  lemma: chleb
+  case: gen
+  rule_key: GEN_NEGATION
+  gloss: "There is no bread today."
+
+- text: "Nie mam książki."
+  target: książki
+  lemma: książka
+  case: gen
+  rule_key: GEN_NEGATION
+  gloss: "I do not have the book."
+
+# --------------------------------------------- genitive after prepositions
+- text: "Idę do sklepu."
+  target: sklepu
+  lemma: sklep
+  case: gen
+  rule_key: GEN_PREPOSITION
+  gloss: "I am going to the shop."
+
+- text: "Codziennie idę do pracy."
+  target: pracy
+  lemma: praca
+  case: gen
+  rule_key: GEN_PREPOSITION
+  gloss: "I go to work every day."
+
+- text: "To jest dla siostry."
+  target: siostry
+  lemma: siostra
+  case: gen
+  rule_key: GEN_PREPOSITION
+  gloss: "This is for my sister."
+
+- text: "Kawa jest bez mleka."
+  target: mleka
+  lemma: mleko
+  case: gen
+  rule_key: GEN_PREPOSITION
+  gloss: "The coffee is without milk."
+
+- text: "Wczoraj byłem u lekarza."
+  target: lekarza
+  lemma: lekarz
+  case: gen
+  rule_key: GEN_PREPOSITION
+  gloss: "Yesterday I was at the doctor's."
+
+# --------------------------------------------------- genitive, possession
+- text: "To jest dom brata."
+  target: brata
+  lemma: brat
+  case: gen
+  rule_key: GEN_POSSESSION
+  gloss: "This is my brother's house."
+
+- text: "Widzę rower syna."
+  target: syna
+  lemma: syn
+  case: gen
+  rule_key: GEN_POSSESSION
+  gloss: "I see my son's bicycle."
+
+- text: "To jest książka córki."
+  target: córki
+  lemma: córka
+  case: gen
+  rule_key: GEN_POSSESSION
+  gloss: "This is my daughter's book."
+
+# ------------------------------------------------------------- locative
+- text: "Brat jest w parku."
+  target: parku
+  lemma: park
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "My brother is in the park."
+
+- text: "Mieszkam w Krakowie."
+  target: Krakowie
+  lemma: Kraków
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "I live in Kraków."
+
+- text: "Siostra pije kawę w restauracji."
+  target: restauracji
+  lemma: restauracja
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "My sister is drinking coffee in the restaurant."
+
+- text: "Nauczyciel czyta książkę w szkole."
+  target: szkole
+  lemma: szkoła
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "The teacher is reading a book at school."
+
+- text: "Myślę o siostrze."
+  target: siostrze
+  lemma: siostra
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "I am thinking about my sister."
+
+- text: "Matka jest w kościele."
+  target: kościele
+  lemma: kościół
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "Mother is at church."
+
+- text: "Kot jest w domu."
+  target: domu
+  lemma: dom
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "The cat is at home."
+
+- text: "Lekarz jest w biurze."
+  target: biurze
+  lemma: biuro
+  case: loc
+  rule_key: LOC_PREPOSITION
+  gloss: "The doctor is in the office."

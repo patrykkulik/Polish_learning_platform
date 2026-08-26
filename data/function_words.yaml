@@ -1,0 +1,65 @@
+# Lemmas a natural Polish sentence cannot avoid, and which the curriculum does
+# not teach as vocabulary.
+#
+# The specification's vocabulary whitelist rejects any out-of-scope lemma, which
+# is right for content words and unworkable for these: there is no way to write
+# "the brother is in the park" without `być` and `w`, and no learner needs those
+# scheduled as flashcards. They are scaffolding, not curriculum.
+#
+# Kept deliberately small. Every addition widens what a generated sentence may
+# contain, and the whole value of the whitelist is that it is narrow.
+
+# Copula and possession — the two verbs everything else is built on.
+- być
+- mieć
+
+# Motion, because every locative and genitive-of-direction sentence needs it.
+- iść
+- mieszkać
+
+# Prepositions. The case each governs is the lesson; the preposition itself is
+# not something to memorise separately.
+- w
+- do
+- z
+- na
+- o
+- dla
+- u
+- od
+- przy
+- po
+- bez
+
+# Negation, coordination, deixis.
+- nie
+- i
+- a
+- ale
+- to
+- ten
+
+# Pronouns. Present so a sentence can have a subject that is not a noun.
+- ja
+- ty
+- on
+- ona
+- ono
+- my
+- wy
+- oni
+- się
+
+# Time and degree adverbs. These carry the aspect contrast — `codziennie`
+# forces the imperfective and `wczoraj` invites the perfective — so they are
+# doing grammatical work rather than decorating.
+- codziennie
+- wczoraj
+- dzisiaj
+- teraz
+- często
+- zawsze
+- bardzo
+- tutaj
+- tam
+- gdzie

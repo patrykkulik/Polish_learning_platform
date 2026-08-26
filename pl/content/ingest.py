@@ -309,7 +309,23 @@ def main() -> None:
     try:
         ingest_all(session)
         items = frames.build(session)
+        from sqlalchemy import func
+
+        from pl.models import Item, Lexeme, Pattern
+
+        counts = dict(
+            session.execute(
+                select(Item.source, func.count(Item.id)).group_by(Item.source)
+            ).all()
+        )
         print(f"curriculum built: {len(items)} new items")
+        print(
+            f"  lexemes {session.scalar(select(func.count()).select_from(Lexeme))}"
+            f"  strata {session.scalar(select(func.count()).select_from(Pattern))}"
+            f"  items {session.scalar(select(func.count()).select_from(Item))}"
+            f"  (template {counts.get('template', 0)},"
+            f" generated {counts.get('generated', 0)})"
+        )
     finally:
         session.close()
 

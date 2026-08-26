@@ -71,7 +71,7 @@ _SCHEMA: Final[dict[str, tuple[tuple[str, ...], tuple[str, ...]]]] = {
     "conj": ((), ()),
     "comp": ((), ()),
     "qub": ((), ()),
-    "part": ((), ()),
+    "part": ((), ("vocalicity",)),
     "interj": ((), ()),
     "burk": ((), ()),
     "brev": (("punctuation",), ()),

@@ -263,3 +263,41 @@
   theme: verbs
   pos: inf
   aspect_partner: kupować
+
+- lemma: widzieć
+  gloss: to see (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: zobaczyć
+- lemma: zobaczyć
+  gloss: to see (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: widzieć
+- lemma: lubić
+  gloss: to like (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: polubić
+- lemma: polubić
+  gloss: to like (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: lubić
+
+# Kraków earns its place: its locative (`w Krakowie`) carries the ó/o
+# alternation the specification names as the reason locative is taught with
+# palatalisation.
+- lemma: Kraków
+  gloss: Kraków
+  theme: venue
+- lemma: myśleć
+  gloss: to think (ongoing)
+  theme: verbs
+  pos: inf
+  aspect_partner: pomyśleć
+- lemma: pomyśleć
+  gloss: to think (completed)
+  theme: verbs
+  pos: inf
+  aspect_partner: myśleć
