@@ -210,21 +210,40 @@ def test_a_diligent_learner_reaches_the_grammar(db, user):
     # flake when it changes.
     horizon = 40
     unlocked: list[str] = []
-    day = 0
+    reached_n01: int | None = None
+
+    # Deliberately runs the whole horizon rather than stopping at the first
+    # unlock. Breaking early made this test blind to everything past V01 — it
+    # could not see that introduction stalled at 14% of the curriculum, which is
+    # exactly the kind of plateau a longitudinal test exists to catch.
     for day in range(1, horizon + 1):
         picked, _ = build_session(db, user.id, SETTINGS, limit=20)
         for item in picked:
             answer(db, user, item)
         unlocked += evaluate_unlocks(db, user.id)
-        if "N01" in unlocked:
-            break
+        if reached_n01 is None and "N01" in unlocked:
+            reached_n01 = day
         advance_one_day(db)
 
-    assert "N01" in unlocked, (
+    assert reached_n01 is not None, (
         f"a learner answering everything correctly every day for {horizon} days "
         f"never unlocked the first grammar node; unlocked={unlocked}"
     )
-    assert day < horizon, f"unlocked only on the final day ({day}); bound is too tight"
+    assert reached_n01 < horizon, (
+        f"unlocked only on the final day ({reached_n01}); the bound is too tight"
+    )
+    # NOT asserted: that a second node ever unlocks. It does not, and the cause
+    # is the design rather than a defect. Criterion 9 forbids introducing new
+    # material while anything is overdue, and once the learner holds enough
+    # cards for at least one to fall due every day, that condition never clears
+    # again — measured here, `introduced` is 10, 0, 10, then 0 forever from day
+    # four. The learner meets roughly twenty items and plateaus.
+    #
+    # `test_introduction_does_not_stall_while_material_remains` covers the part
+    # that *is* a defect — novelty wrongly skipping items — by clearing debt
+    # explicitly. Leaving the plateau unasserted here keeps this test honest
+    # about what the loop currently promises, and the comment keeps it from
+    # being rediscovered as a surprise.
 
 
 def test_re_ingest_recomputes_derived_fields(db, monkeypatch):
@@ -494,3 +513,198 @@ def test_a_dictation_item_never_ships_its_sentence_to_the_client(db):
         assert item.expected_answer not in str(payload)
         assert payload["prompt"] == ""
         assert payload["options"] is None
+
+
+# ---------------------------------------------- the scoring consequence
+# Every test below asserts what `apply_diagnosis` *moved*, not just what the
+# classifier called it. Three M2 features shipped scoring nothing because the
+# tests stopped at the label.
+
+
+def _score(db, user, item, submitted):
+    """Grade a submission and report which cards it actually moved."""
+    from pl.api import grade_item
+    from pl.schedule import apply_diagnosis
+
+    attempt = Attempt(
+        user_id=user.id,
+        item_id=item.id,
+        submitted=submitted,
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.add(attempt)
+    db.flush()
+    diagnosis = grade_item(db, item, submitted)
+    applied = apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    db.commit()
+    return diagnosis, applied
+
+
+def test_choosing_the_wrong_aspect_fails_the_rule_card(db, user):
+    """The design's highest-value grammar node has to produce a signal.
+
+    `ExpectedSlot.aspect_partner` is what step 5 needs to tell an aspect error
+    from a vocabulary one. Unset, the classifier returns LEXICAL — and LEXICAL
+    under a grammar node scores nothing, so the exercise teaches the learner
+    they were wrong and teaches the scheduler nothing at all.
+    """
+    from pl.domain import ErrorClass
+    from pl.schedule import PATTERN
+
+    item = db.scalar(select(Item).where(Item.exercise_type == "aspect_choice"))
+    assert item is not None
+    wrong = next(o for o in item.options_json if o != item.expected_answer)
+
+    diagnosis, applied = _score(db, user, item, wrong)
+    assert diagnosis.error_class is ErrorClass.ASPECT_WRONG
+    assert applied.get(PATTERN) == 1, "the rule card must take the failure"
+
+
+def test_misspelling_any_word_of_a_dictation_fails_it(db, user):
+    """Dictation exists to test spelling, at every position.
+
+    A mismatch away from the target position was classified LEXICAL, which is
+    unscored under a grammar node — so a learner could misspell two words of a
+    three-word sentence and move nothing.
+
+    The item is chosen rather than taken first: the misspelling has to be a
+    *dropped diacritic* to be an orthographic error at all, so the sentence
+    needs a non-target word that has one. Mangling `brat` any other way is a
+    lexical error and would test the opposite of what this claims to.
+    """
+    from pl.domain import ErrorClass
+    from pl.grade.classify import _ASCII_FOLD
+    from pl.models import ItemSlot
+
+    for item in db.scalars(
+        select(Item).where(Item.exercise_type == "listening_dictation")
+    ):
+        slots = list(
+            db.scalars(
+                select(ItemSlot)
+                .where(ItemSlot.item_id == item.id)
+                .order_by(ItemSlot.slot_index)
+            )
+        )
+        target_index = next(
+            i for i, s in enumerate(slots) if s.target_form_id is not None
+        )
+        candidates = [
+            i
+            for i, s in enumerate(slots)
+            if i != target_index and any(c in _ASCII_FOLD for c in s.expected_surface)
+        ]
+        if candidates:
+            break
+    else:
+        pytest.skip("no dictation sentence has a diacritic away from the target")
+
+    tokens = [s.expected_surface for s in slots]
+    position = candidates[0]
+    tokens[position] = _drop_a_diacritic(tokens[position])
+    diagnosis, applied = _score(db, user, item, " ".join(tokens))
+
+    assert diagnosis.error_class is ErrorClass.ORTHOGRAPHY, (
+        f"misspelling {slots[position].expected_surface!r} at position "
+        f"{position} (target is {target_index})"
+    )
+    assert applied and set(applied.values()) == {1}, "spelling must fail here"
+
+
+def _drop_a_diacritic(word: str) -> str:
+    """Replace the first Polish letter with its ASCII base — a keyboard slip."""
+    from pl.grade.classify import _ASCII_FOLD
+
+    for index, char in enumerate(word):
+        if char in _ASCII_FOLD:
+            return word[:index] + _ASCII_FOLD[char] + word[index + 1 :]
+    raise AssertionError(f"{word!r} has no diacritic to drop")
+
+
+def test_every_error_class_has_an_explanation():
+    """Acceptance criterion 5, over the whole vocabulary rather than a sample.
+
+    Two classes became reachable with multi-slot items and neither had an arm,
+    so both fell through to a sentence naming a form the learner got right.
+    """
+    from pl.domain import Diagnosis, ErrorClass, ExpectedSlot, Form as DomainForm
+    from pl.grade import explain
+    from pl.grade.explain import GENERIC_FALLBACK
+    from pl.tags import parse
+
+    slot = ExpectedSlot(
+        expected=DomainForm(
+            surface="kota", lemma="kot:Sm2", tag=parse("subst:sg:gen.acc:m2")
+        ),
+        paradigm=(),
+    )
+    missing = [
+        str(cls)
+        for cls in ErrorClass
+        if explain(Diagnosis(error_class=cls, submitted="x", slot=slot))
+        == GENERIC_FALLBACK.format(want="kota")
+    ]
+    assert not missing, f"classes with no explanation of their own: {missing}"
+
+
+def test_introduction_does_not_stall_while_material_remains(db, user):
+    """New material must keep coming until there is none left.
+
+    Novelty is judged per referent-set. Skipping an item because *any* of its
+    referents is started means the first item of a stratum claims the pattern
+    for every other lexeme in it, and the queue dries up with most of the
+    curriculum never offered. The invariant is exact: if a day introduces
+    nothing, nothing introducible can remain.
+    """
+    from datetime import datetime as dt
+
+    from pl.models import NodeUnlock
+    from pl.session import _item_referents, _sense_by_form, _started_referents
+
+    for node in db.scalars(select(Node)):
+        db.add(
+            NodeUnlock(
+                user_id=user.id,
+                node_id=node.id,
+                unlocked_at=dt.now(UTC).replace(tzinfo=None),
+            )
+        )
+    db.commit()
+
+    seen: set[int] = set()
+    for _ in range(40):
+        picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+        for item in picked:
+            schedule_cards(db, user, item)
+            seen.add(item.id)
+        db.commit()
+        _defer_everything(db)
+        if stats["introduced"] == 0:
+            break
+
+    started = _started_referents(db, user.id)
+    sense_by_form = _sense_by_form(db)
+    stranded = [
+        item.id
+        for item in db.scalars(select(Item))
+        if (refs := _item_referents(db.get(Node, item.node_id), item, sense_by_form))
+        and not (refs <= started)
+    ]
+    total = db.scalar(select(func.count()).select_from(Item))
+    assert not stranded, (
+        f"introduction stalled with {len(stranded)} of {total} items never "
+        f"offered (reached {len(seen)})"
+    )
+
+
+def schedule_cards(db, user, item):
+    from pl import schedule
+
+    schedule.cards_for_item(db, user.id, item)
+
+
+def _defer_everything(db):
+    later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=90)
+    for card in db.scalars(select(Card)):
+        card.due_at = later
+    db.commit()

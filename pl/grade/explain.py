@@ -44,6 +44,10 @@ _ASPECTS: Final[dict[str, str]] = {
 #: "genitive or accusative" rather than in set iteration order.
 _CASE_ORDER: Final = ("nom", "gen", "dat", "acc", "inst", "loc", "voc")
 
+#: Last resort. Named so a test can assert no class reaches it — a message that
+#: names a form the learner got right is worse than no message.
+GENERIC_FALLBACK: Final = "The form needed here is {want}."
+
 
 def _render(values: frozenset[str], names: dict[str, str], order=None) -> str:
     keys = order or list(names)
@@ -132,6 +136,15 @@ def explain(diagnosis: Diagnosis) -> str:
         case ErrorClass.ORTHOGRAPHY:
             return f"The grammar is right — check the spelling: {want}."
 
+        case ErrorClass.WORD_ORDER:
+            return (
+                "Every word is right — the order is not. Polish word order is "
+                "freer than English, but not free."
+            )
+
+        case ErrorClass.MISSING_CONSTITUENT:
+            return "Something is missing. Every word you heard has to be there."
+
         case ErrorClass.LEXICAL:
             other = observed.base_lemma if observed else "another word"
             return f"That is a form of {other}. This slot needs {lemma}: {want}."
@@ -142,4 +155,4 @@ def explain(diagnosis: Diagnosis) -> str:
                 f"of {lemma} is {want}."
             )
 
-    return f"The form needed here is {want}."
+    return GENERIC_FALLBACK.format(want=want)

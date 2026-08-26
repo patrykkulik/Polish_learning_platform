@@ -363,7 +363,13 @@ def build_session(
                     break
                 for item in pool:
                     refs = _item_referents(node, item, sense_by_form)
-                    if refs & started:
+                    # Skip only when the item is entirely old. A pattern card is
+                    # shared by every lexeme in its stratum, so testing for *any*
+                    # overlap lets the first item of a stratum claim it for all
+                    # the others — the queue then dries up having offered a small
+                    # fraction of the curriculum, with the rest reachable only by
+                    # chance through remediation.
+                    if refs and refs <= started:
                         continue
                     if add(item):
                         started |= refs

@@ -263,8 +263,14 @@ def classify_sentence(
             continue
         if index == target_index:
             return classify(target, token)
-        # A fixed word the learner altered. Nothing in the paradigm explains it,
-        # so it is a lexical substitution rather than an inflection error.
+        # A word away from the target still deserves the orthographic reading
+        # the single-slot path gives it. Dictation exists to test spelling at
+        # *every* position, and without this a misspelling anywhere but the
+        # target was called a vocabulary error — which scores nothing under a
+        # grammar node, so two of three words could be wrong and move no card.
+        if _is_orthographic(token, want):
+            return result(ErrorClass.ORTHOGRAPHY)
+        # Nothing in the paradigm explains it: a lexical substitution.
         return result(ErrorClass.LEXICAL)
 
     if len(tokens) > len(wanted):

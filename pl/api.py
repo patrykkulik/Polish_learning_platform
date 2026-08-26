@@ -76,7 +76,19 @@ def expected_slot(db, item: Item) -> ExpectedSlot:
         f for f in paradigm
         if f.surface == target.surface and f.tag.raw == target.morph_tag
     )
-    return ExpectedSlot(expected=expected, paradigm=paradigm)
+    # Without this the classifier's step 5 cannot tell an aspect error from a
+    # vocabulary one, so ASPECT_WRONG is unreachable at runtime and the aspect
+    # exercise scores nothing when the learner gets it wrong.
+    partner = (
+        db.get(Lexeme, lexeme.aspect_partner_id)
+        if lexeme.aspect_partner_id is not None
+        else None
+    )
+    return ExpectedSlot(
+        expected=expected,
+        paradigm=paradigm,
+        aspect_partner=partner.lemma if partner else None,
+    )
 
 
 def grade_item(db, item: Item, submitted: str):
