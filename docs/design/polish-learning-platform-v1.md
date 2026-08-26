@@ -910,12 +910,19 @@ Calendar time was never the interesting axis. What actually constrains each phas
 |---|---|
 | **Fast** — the machinery exists | Cases and their frames, more lemmas, aspect, the LLM pipeline behind the `item.source` seam, a React PWA against the unchanged JSON API |
 | **Genuinely hard** | Multi-slot items: real lattice alignment across several blanks, which is what unlocks `WORD_ORDER` and `MISSING_CONSTITUENT`. M0 built the lattice machinery deliberately, but every item is single-slot to this day |
-| **Blocked on external resources** | TTS, blob storage and CDN need Azure. The native-speaker reviewer is a person |
+| **Blocked on external resources** | The native-speaker reviewer is a person. *(TTS and the content pipeline were listed here and should not have been — see below.)* |
 | **Bounded by judgement, not time** | Curating ~600 lemmas *well*. Producing 600 entries is quick; whether they are the right 600 with correct glosses and register is a question only a fluent speaker settles |
 
 The practical consequence is that phases should be sliced by **what blocks them**, not by how long
 they would take someone working evenings. Everything in the first row can land in one pass; the
 second row deserves its own; the third cannot start at all until credentials exist.
+
+**A category error worth recording.** "Blocked on Azure" was repeated for several phases as though
+it were a property of the work. It was a property of the design's vendor choice. TTS needed *a*
+synthesiser and one was already installed; the content pipeline's validation half needed no model at
+all; blob and CDN were deployment concerns misfiled as prerequisites. Only the reviewer was ever
+genuinely external. The lesson is narrower than "check your assumptions": a dependency named after a
+vendor hides what the requirement actually is, and the name survives longer than the reasoning.
 
 The one estimate that survives unchanged is spec §10's stall risk — "M1 must be genuinely useful to
 you alone". That was never about effort. It is about whether anyone opens the thing tomorrow.
@@ -957,7 +964,7 @@ describes only the intended system misleads anyone who reads it next to the code
 
 **Content**
 
-- 69 lexemes against the ~600 M2 calls for. The locative carries 27 strata over 71 items — about 2.6
+- 76 lexemes against the ~600 M2 calls for. The locative carries 27 strata over 71 items — about 2.6
   items per stratum, which makes "the card generalises across its stratum" thin for that node. More
   lemmas is the fix, not fewer strata.
 - Every Polish frame and gloss is authored here and **wants a native-speaker review**. The inflected
@@ -1039,8 +1046,15 @@ describes only the intended system misleads anyone who reads it next to the code
   - **Not built, and genuinely hard:** multi-slot items — `item_slot`, real lattice alignment across
     several blanks, and the two error classes single-slot items cannot produce (`WORD_ORDER`,
     `MISSING_CONSTITUENT`). This is the part that is a design-and-build problem rather than volume.
-  - **Not built, blocked on Azure:** spec §5.2's LLM pipeline behind the `item.source` seam; audio,
-    blob and CDN.
+  - **Built, and not blocked on Azure after all:** spec §5.2's pipeline. The *validation* stage needs
+    no model at all — every check is a morphological or arithmetic fact — and the *generation* stage
+    is authored offline and committed, which is exactly what `item.source` was declared for. The
+    runtime holds no API key and makes no network call. Audio likewise: the design names Azure Speech
+    because it matched the toolchain, and the requirement was only ever *a* Polish voice. macOS ships
+    one, with rate control, so the two speeds §5.3 asks for come for free. `pl/audio.py` is the sole
+    module that knows how speech is produced, so a cloud voice for deployment changes one file.
+  - **Not built, and genuinely deployment-only:** blob storage and a CDN. They exist to serve cached
+    audio to many learners; one learner on a laptop is served from disk.
   - **Not built, deferred deliberately:** the React PWA. It replaces the Jinja page against an
     unchanged JSON API and adds no capability, so it buys nothing until there is a reason to want it.
   - **Still needed:** ~600 lemmas against today's 69, the reviewer, and the cost model that decides
