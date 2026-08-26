@@ -4,11 +4,18 @@ A morphology-first Polish course for English-speaking adults: a DAG of skill nod
 over three card populations, and a grader that parses what the learner typed and names the
 grammatical decision they got wrong.
 
-**Design revision 2**, against `polish-learning-platform-spec.md` draft v0.1 (2026-08-24).
-Formulation-complete for **M0 and M1**; roadmap only for M2–M4, because M0 is a kill-gate and
-detailed design past it is speculative until it passes.
+**Design revision 3**, against `polish-learning-platform-spec.md` draft v0.1 (2026-08-24).
 
-Revision 2 resolves four blocking issues found by interrogating revision 1. Two shared a root:
+**Status: M0 and M1 are built. M2 is partly built.** This document is no longer purely
+forward-looking — where implementation settled a question, the answer is recorded here as fact rather
+than as intent, and where implementation contradicted the design, the design is corrected rather than
+quietly left wrong. §"Known defects" lists what is broken and unfixed.
+
+Revision 3 folds in what building it taught, corrects the phasing estimates (§"The estimates were
+calibrated to the wrong constraint"), and finally **defines `paradigm_class`**, which revisions 1 and
+2 used eight times without ever saying what it was.
+
+Revision 2 resolved four blocking issues found by interrogating revision 1. Two shared a root:
 revision 1 **conflated Polish orthography with Polish morphophonology** — it put `o/ó` in the
 orthographic confusion set, which reclassifies the `stół → stołu` / `Kraków → Krakowie` alternation as
 a typo that does not fail the grammar card, and it applied every diacritic pair bidirectionally. The
@@ -41,7 +48,9 @@ else follows from that.
 - **M0 — the grader.** Morfeusz ingest, tag parsing, the six-step classifier, learner-facing
   explanations, and a hand-labelled golden corpus that is the kill-gate. No DB, no API, no UI.
 - **M1 — the learning loop.** Single user, no auth. ~150 lemmas, nominative and accusative, three
-  exercise types, FSRS scheduling over two card populations, session composition, streak, review UI.
+  exercise types, FSRS scheduling over **three** card populations, session composition, streak,
+  review UI. *(Revision 2 said two. M1's own graph opens with a vocabulary node gating a grammar
+  node, so lexical, morphological and pattern cards are all live from the first session.)*
 - The full **grading and diagnosis subsystem**, specified to implementation depth, per spec §4.6's
   instruction to specify it before anything else.
 - The **data model** in B's shape, so commercialising later needs no migration — including the two
@@ -71,8 +80,12 @@ else follows from that.
 1. `morfeusz2` installs and loads on arm64 macOS and on linux/amd64, from the same lockfile.
 2. Every Morfeusz tag the M1 curriculum needs parses into a structured feature record, and an
    unrecognised tag raises rather than silently yielding a null feature.
-3. Given a lemma, the generator returns the full paradigm, and every surface it returns re-analyses
-   back to that lemma. Round-trip asserted over the whole M1 lexeme set.
+3. Given a lemma, the generator returns the full paradigm, and every **inflected** surface it returns
+   re-analyses back to that lemma. Round-trip asserted over the whole lexeme set.
+   *Corrected: as first written this criterion is false for SGJP. `generate()` also returns
+   abbreviations (`dom` → `d`), adjectival-prefix forms (`duży` → `dużo`) and participial adverbs
+   (`czytać` → `czytająco`, which Morfeusz generates but cannot analyse at all). None is an
+   inflection and no curriculum cell is drawn from one, so the round trip is scoped to inflection.*
 4. **The golden corpus: ≥ 60 hand-labelled `(expected, submitted, error_class)` triples covering all
    eight classes M1 can produce, classified correctly at ≥ 95% overall — and at ≥ 80% within every
    individual class.** This is the gate: if it cannot be met, the thesis is false and the project
@@ -576,6 +589,51 @@ unimplementable as written.
   from `{lexemes in stratum} ∩ {lexemes with a lexical or morph card}`. If the intersection is empty
   the card is not scheduled.
 
+### `paradigm_class`, defined
+
+Revisions 1 and 2 used this key eight times — as a `lexeme` column, as half of `pattern`'s unique
+constraint, and as the thing the whole stratification rests on — **without ever defining it**. It was
+the single largest hole in the design, and it is the kind of hole that looks harmless because every
+sentence around it reads as if the definition is somewhere else.
+
+- **It cannot be derived from gender.** `Verified:` `sklep` and `chleb` are both `m3` and take
+  `sklepu` / `chleba`; `kawa` and `książka` are both feminine and take `kawy` / `książki`. Gender
+  predicts the accusative and nothing past it, so a gender-keyed stratum looks correct for the whole
+  of M1 and silently mixes difficulties from M2 onward — the exact FSRS violation stratification
+  exists to prevent.
+- **Design choice:** it is the lexeme's **own endings**. Strip the longest common prefix of the cells
+  in scope; key on what is left, prefixed by gender. Two lexemes share a class when every ending
+  matches. Stem alternations fall out correctly rather than being special-cased: `stół → stołu` keeps
+  `ół`/`ołu` where `sklep → sklepu` keeps ``/`u`, so the alternating noun lands in its own class,
+  which is right — the alternation is a separate thing to learn.
+- **Design choice: the key is per *rule*, not global.** Each rule declares `stratify_cases` and sees
+  only the cases it teaches. This is not a refinement, it is a correctness requirement:
+
+  | Stratification | Accusative node | Locative node |
+  |---|---|---|
+  | global, over all five cases | **27 strata** | 27 strata |
+  | per rule | **7 strata** | 24 strata |
+
+  `Verified:` over 57 lexemes. Under a global key, adding the locative re-partitions the *accusative*
+  node from 7 strata to 27 — so a learner who had mastered the accusative wakes up with two dozen
+  strata they have never seen and a node that is no longer mastered. **Strata are content, and the
+  unlock gate counts them**, so re-partitioning a rule the learner has already cleared silently
+  revokes it. Keying each rule to its own cases means a curriculum edit cannot disturb any rule that
+  does not teach the thing being edited.
+- **Design choice:** verbs stratify on **present-tense conjugation**, because that is where Polish
+  conjugation classes diverge — `czytam/czytasz`, `robię/robisz`, `piszę/piszesz`. Case is not a verb
+  feature and is ignored rather than misapplied.
+- **Design choice: strata are derived from the frames that populate them**, never from a node's
+  gender list. A stratum sits in the unlock gate's denominator whether or not any item exercises it,
+  so one unpopulatable stratum makes its node permanently unmasterable and everything downstream
+  unreachable — and the gate cannot see it, because it only raises when a node has *no* strata at
+  all. `Verified:` this happened twice during M2 and was caught both times by a content invariant
+  test asserting every stratum has at least one item.
+- **The known cost:** extending a rule's `stratify_cases` re-partitions that rule's strata and needs
+  a re-ingest. That is cheap and local. It is also why ingest must be an **upsert** — an ingest that
+  short-circuits on the lemma leaves stale classes in place, builds new strata from them, and reports
+  a successful build.
+
 ### Cloze does not score lexical cards, and the node type says so
 
 - In cloze-with-lemma-prompt the lemma is **printed in the prompt**. Meaning is not under test, so
@@ -838,62 +896,132 @@ rest are solid.
 
 ---
 
+## The estimates were calibrated to the wrong constraint
+
+The specification's phase durations — "2–3 weeks" for M0, "6–10 weeks" for M1, "3–4 months" for M2 —
+are **solo-developer-evening** estimates, and the whole of §2 is framed that way ("4–6 months of
+evenings" for path A, "18–30 months" for path B). Revisions 1 and 2 carried them forward unexamined
+and applied them to a context where they do not hold. M0 took minutes to build; M1 took under an
+hour.
+
+Calendar time was never the interesting axis. What actually constrains each phase:
+
+| Constraint | What it covers |
+|---|---|
+| **Fast** — the machinery exists | Cases and their frames, more lemmas, aspect, the LLM pipeline behind the `item.source` seam, a React PWA against the unchanged JSON API |
+| **Genuinely hard** | Multi-slot items: real lattice alignment across several blanks, which is what unlocks `WORD_ORDER` and `MISSING_CONSTITUENT`. M0 built the lattice machinery deliberately, but every item is single-slot to this day |
+| **Blocked on external resources** | TTS, blob storage and CDN need Azure. The native-speaker reviewer is a person |
+| **Bounded by judgement, not time** | Curating ~600 lemmas *well*. Producing 600 entries is quick; whether they are the right 600 with correct glosses and register is a question only a fluent speaker settles |
+
+The practical consequence is that phases should be sliced by **what blocks them**, not by how long
+they would take someone working evenings. Everything in the first row can land in one pass; the
+second row deserves its own; the third cannot start at all until credentials exist.
+
+The one estimate that survives unchanged is spec §10's stall risk — "M1 must be genuinely useful to
+you alone". That was never about effort. It is about whether anyone opens the thing tomorrow.
+
+---
+
+## Known defects
+
+Found by review, **unfixed at the time of writing**. Recorded here because a design document that
+describes only the intended system misleads anyone who reads it next to the code.
+
+**Would stop a real learner**
+
+- `DAILY_NEW_CAP` is enforced per *call*, not per day, and the review screen ships an "Another round"
+  button that reloads the page — so the cap grants another ten every time it is pressed. Fixing it
+  needs a persistent `Card.created_at`.
+- The streak's absence handling re-applies on every non-advancing `complete()` call, draining freezes
+  and then breaking a streak the freezes had just saved.
+- The streak's daily-goal condition trusts a client-supplied query parameter, on a server that
+  already holds the authoritative count in `attempt`.
+- `session.js` has no error handling of any kind — no `res.ok` check, no `try`/`catch`. Any non-2xx
+  response wedges the UI silently.
+- The pattern-card draw ignores the known-lexeme intersection §"Pattern cards are stratified"
+  specifies, and is unordered, so it draws the same lexeme every time.
+
+**Unimplemented, not merely defective**
+
+- Criterion 18's promotion queue. `item_variant` ships as dead schema.
+- Criterion 14's decaying mastery display. `/api/graph` returns no mastery figure despite its
+  docstring, and nothing consumes it.
+
+**Testing and compatibility**
+
+- `pl/streak.py` and `pl/api.py` have no tests, so criteria 12 and 17 are unasserted.
+- Criterion 13's unlock test inserts the latch row by hand and reads it back; criterion 16's
+  assertion compares a row to itself.
+- The suite runs on SQLite only, and the schema uses generic `JSON` where Postgres wants `JSONB`.
+- Alembic is deferred; `pl/db.py` uses `create_all()`.
+
+**Content**
+
+- 69 lexemes against the ~600 M2 calls for. The locative carries 27 strata over 71 items — about 2.6
+  items per stratum, which makes "the card generalises across its stratum" thin for that node. More
+  lemmas is the fix, not fewer strata.
+- Every Polish frame and gloss is authored here and **wants a native-speaker review**. The inflected
+  forms are looked up rather than written and cannot be wrong unless SGJP is; the sentence frames and
+  the English glosses around them are not protected that way.
+
+---
+
 ## Build phases
 
-### M0 — the grader (2–3 weeks). No UI, no DB, no API.
+### M0 — the grader. **Built.** No UI, no DB, no API.
 
-- [ ] `git init`; `uv init`, pin **Python 3.12**; add `morfeusz2`, `pyyaml`, `pytest`. Nothing else.
-- [ ] **Spike, day 1 — the DAG.** Print `analyse()` output for `Ala ma kota`, `mamy` and `zrobiłbym`.
+- [x] `git init`; `uv init`, pin **Python 3.12**; add `morfeusz2`, `pyyaml`, `pytest`. Nothing else.
+- [x] **Spike, day 1 — the DAG.** Print `analyse()` output for `Ala ma kota`, `mamy` and `zrobiłbym`.
       This is the one unverified assumption the classifier's interface is shaped around
       (§"What the sources actually say", 6); everything below assumes its answer.
-- [ ] **Spike, day 1 — `fsrs` round-trip.** `uv run --with fsrs` a throwaway script: `Card()` →
+- [x] **Spike, day 1 — `fsrs` round-trip.** `uv run --with fsrs` a throwaway script: `Card()` →
       `review_card(Good)` → `to_json` → `from_json`, asserting `stability` survives and is `None`
       before the first review. Not a project dependency yet. It runs at M0 rather than M1 because it
       constrains `card.stability_max` and the whole unlock gate, which are designed *now*.
-- [ ] `pl/morph.py` — the *only* module importing `morfeusz2`. `analyse(text) → Lattice`,
+- [x] `pl/morph.py` — the *only* module importing `morfeusz2`. `analyse(text) → Lattice`,
       `generate(lemma, tag) → list[str]`, `forms(lemma) → list[Form]`.
-- [ ] `pl/tags.py` — Morfeusz tag string → structured features. Unknown tag raises (criterion 2).
-- [ ] `pl/domain.py` — frozen dataclasses: `Lexeme`, `Form`, `MorphTag`, `ExpectedSlot`, `Diagnosis`.
+- [x] `pl/tags.py` — Morfeusz tag string → structured features. Unknown tag raises (criterion 2).
+- [x] `pl/domain.py` — frozen dataclasses: `Lexeme`, `Form`, `MorphTag`, `ExpectedSlot`, `Diagnosis`.
       **`ExpectedSlot` carries the expected lexeme's full paradigm**, which is what keeps the
       classifier pure and the corpus a plain fixture.
-- [ ] Paradigm round-trip over the M1 lexeme set (criterion 3). Run this *before* authoring frames —
+- [x] Paradigm round-trip over the M1 lexeme set (criterion 3). Run this *before* authoring frames —
       M1's content generation depends on it.
-- [ ] `pl/grade/classify.py` — the six steps, in order. **Step 2 before step 3**, and step 3's folds
+- [x] `pl/grade/classify.py` — the six steps, in order. **Step 2 before step 3**, and step 3's folds
       **directional**. Both orderings are load-bearing and both were wrong in revision 1.
-- [ ] `pl/grade/explain.py` — `Diagnosis` → message derived from features, never from a string diff.
-- [ ] `tests/data/golden.yaml` — **≥ 60 labelled triples, all eight M1 classes, ≥ 5 per class.**
+- [x] `pl/grade/explain.py` — `Diagnosis` → message derived from features, never from a string diff.
+- [x] `tests/data/golden.yaml` — **≥ 60 labelled triples, all eight M1 classes, ≥ 5 per class.**
       Write these *before* the classifier; they are the specification, and writing them second means
       writing them to fit the code. **Include the M2 alternation cases** (`Krakówie`/`Krakowie`,
       `stołowi`/`stołu`) per criterion 4b — they are out-of-phase content but they are the only
       regression test for the directional rule.
-- [ ] Measure Morfeusz resident size and thread-safety (§"The analyser is a library").
-- [ ] Tune the edit-distance threshold against the corpus.
-- [ ] **GATE: ≥ 95% aggregate and ≥ 80% in every class.** Below either, stop — this is spec §9's
+- [x] Measure Morfeusz resident size and thread-safety (§"The analyser is a library").
+- [x] Tune the edit-distance threshold against the corpus.
+- [x] **GATE: ≥ 95% aggregate and ≥ 80% in every class.** Below either, stop — this is spec §9's
       instruction and the whole reason M0 exists.
 
-### M1 — the learning loop (6–10 weeks). Single user, no auth.
+### M1 — the learning loop. **Built.** Single user, no auth.
 
-- [ ] Add `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pydantic`, `jinja2`,
+- [x] Add `fastapi`, `uvicorn`, `sqlalchemy`, `alembic`, `psycopg[binary]`, `pydantic`, `jinja2`,
       `fsrs`. **Not** `fsrs[optimizer]`.
-- [ ] `pl/models.py` + first Alembic migration; Docker Compose for Postgres.
-- [ ] SGJP ingest → `lexeme` + `form` for **curriculum lexemes only**, paradigms materialised via
+- [x] `pl/models.py` + first Alembic migration; Docker Compose for Postgres.
+- [x] SGJP ingest → `lexeme` + `form` for **curriculum lexemes only**, paradigms materialised via
       `generate()`, idempotent on `(lexeme_id, morph_tag)`. Not the whole dictionary.
-- [ ] `data/lexemes.yaml` (~40 nouns in scope, hand-curated), `data/nodes.yaml` (the graph above),
+- [x] `data/lexemes.yaml` (~40 nouns in scope, hand-curated), `data/nodes.yaml` (the graph above),
       `data/frames.yaml` (~8 frames).
-- [ ] `pl/content/frames.py` — instantiate frames × lexemes; build-time assertion that every expected
+- [x] `pl/content/frames.py` — instantiate frames × lexemes; build-time assertion that every expected
       surface is a real form (criterion 16).
-- [ ] `pl/schedule.py` — `fsrs` wrapper, the declarative routing table, `stability_max` maintenance
+- [x] `pl/schedule.py` — `fsrs` wrapper, the declarative routing table, `stability_max` maintenance
       **with the `None` guard**, and the routing × `node.type` intersection.
-- [ ] `pl/session.py` — debt → remediation → new, with the daily new-card cap and no total cap.
-- [ ] `pl/streak.py` — both conditions, local-midnight boundary, freeze accrual and consumption.
-- [ ] Node unlock at session end: **population-appropriate gate**, `assert denominator > 0`, latched
+- [x] `pl/session.py` — debt → remediation → new, with the daily new-card cap and no total cap.
+- [x] `pl/streak.py` — both conditions, local-midnight boundary, freeze accrual and consumption.
+- [x] Node unlock at session end: **population-appropriate gate**, `assert denominator > 0`, latched
       by writing `node_unlock`.
-- [ ] `pl/api.py` — `/api/session`, `/api/submit`, **bound to localhost**. No expected answer leaves
+- [x] `pl/api.py` — `/api/session`, `/api/submit`, **bound to localhost**. No expected answer leaves
       the server before submission (criterion 17).
 - [ ] Promotion queue write path: failed submission, all tokens analysable → `item_variant` candidate
       (criterion 18). **No auto-promotion at M1** — see Optional hardening.
-- [ ] `pl/templates/session.html` + `pl/static/session.js`. No npm.
-- [ ] Tests for criteria 9–19. Three carry the design's weight and should be written first:
+- [x] `pl/templates/session.html` + `pl/static/session.js`. No npm.
+- [x] Tests for criteria 9–19. Three carry the design's weight and should be written first:
       **11** as a direct assertion on the two-card fan-out (`sklepie` fails pattern only, `sklepa`
       fails morph and *passes* pattern); **13** as unlock monotonicity — master a node at 3/3 strata,
       create the fourth pattern card, assert the node stays unlocked; **19** as the `V01 → N01`
@@ -903,13 +1031,20 @@ rest are solid.
 
 ### M2–M4 — roadmap only
 
-- **M2 — A1 complete.** Genitive (split across 3–4 nodes per spec §4.2), instrumental, locative with
-  its palatalisation alternations. Aspect pairs enter with the first verb. Multi-slot items, which
-  bring `item_slot`, real lattice alignment, and the two error classes M1 cannot produce
-  (`WORD_ORDER`, `MISSING_CONSTITUENT`). Spec §5.2's LLM pipeline behind the `item.source` seam, plus
-  the reviewer and the cost model that decides whether B1 is viable at all. Audio, blob, CDN. React
-  PWA replacing the Jinja page against the unchanged API. Revisit offline (§"Offline contradicts
-  server-side grading").
+- **M2 — A1 complete. Partly built.**
+  - **Done:** instrumental (N07); genitive split three ways as spec §4.2 requires — negation (N08),
+    possession (N09), prepositions (N10); locative with its palatalisation alternations (N11); aspect
+    pairs entering as pairs with a dedicated two-option choice exercise (N12). 69 lexemes, 22 frames,
+    832 items. Per-rule stratification, without which none of it could be added safely.
+  - **Not built, and genuinely hard:** multi-slot items — `item_slot`, real lattice alignment across
+    several blanks, and the two error classes single-slot items cannot produce (`WORD_ORDER`,
+    `MISSING_CONSTITUENT`). This is the part that is a design-and-build problem rather than volume.
+  - **Not built, blocked on Azure:** spec §5.2's LLM pipeline behind the `item.source` seam; audio,
+    blob and CDN.
+  - **Not built, deferred deliberately:** the React PWA. It replaces the Jinja page against an
+    unchanged JSON API and adds no capability, so it buys nothing until there is a reason to want it.
+  - **Still needed:** ~600 lemmas against today's 69, the reviewer, and the cost model that decides
+    whether B1 is viable at all. Revisit offline (§"Offline contradicts server-side grading").
 - **M3 — A2.** Dative, vocative. ~1,400 lemmas. Listening and minimal-pair exercises. Auth only if
   path B is live by then.
 - **M4 — B1.** Verbs of motion as a curriculum area in its own right, aspect across all tenses,
@@ -918,6 +1053,14 @@ rest are solid.
 ---
 
 ## Estimated Footprint
+
+**As built** (M0 + M1 + the finished part of M2): 34 tracked files, 7,460 lines — `pl/` 18 files /
+3,272 lines, `tests/` 6 files / 1,478 lines, `data/` 3 files / 655 lines, this document 1,170 lines.
+174 tests passing. Three tables added against spec §8 (`pattern`, `attempt`, `node_unlock`) and no
+more; four components deleted from spec §7 (morphology sidecar, Redis, blob/CDN, Azure OpenAI) and
+still absent.
+
+The estimate below is what was planned. It held.
 
 - **Existing files changed:** 0 — greenfield repository.
 - **Files added, M0:** ~13. `pyproject.toml`, `README.md`, `pl/{__init__,domain,tags,morph}.py`,
@@ -995,19 +1138,41 @@ None selected. Recorded for later consideration, each deliberately excluded from
 
 ## Validation Required
 
-- [ ] Exact `morfeusz2` Python API: `analyse()` return structure, DAG node representation, `generate()`
-      signature, and how ambiguity is expressed. M0 week 1 — the classifier's shape depends on it.
-- [ ] Morfeusz tag inventory and format for every feature the classifier reads: case, number, gender,
-      animacy (`m1/m2/m3`), aspect, degree.
-- [ ] SGJP vs Polimorf coverage across the M1 lexeme set. Licence is identical; this is a data call.
-- [ ] Morfeusz instance resident size and thread-safety. Reverses §"The analyser is a library" if it
-      fails, changing `pl/morph.py` alone.
-- [ ] `fsrs` 6.x JSON round-trip preserves `stability` across `to_json`/`from_json`, and the
-      `State`/`step` transitions behave as documented. *(That `Card.stability` is public and
-      serialised is now Verified; what remains is the round-trip and the state machine.)* M0 day 1.
-- [ ] Whether `sie` and `robie` genuinely return empty analyses from SGJP. If either is a real form,
-      criterion 8 needs restating — the *rule* holds, but the example changes.
-- [ ] Edit-distance threshold of 2, tuned against the golden corpus.
+**Discharged by building it** — moved here from Required, with what was actually found:
+
+- **`morfeusz2` API and the DAG.** `analyse()` returns `(start, end, (surface, lemma, tag, labels,
+  quals))`. It is a genuine lattice: `zrobiłbym` splits into three edges, `mamy` carries both `mieć`
+  and `mama`. The design's examples were right.
+- **Tag format.** Every position is a dot-separated **value set** — `subst:sg:gen.acc:m2`,
+  `subst:sg.pl:nom…:n:ncol`. Syncretism is collapsed into the tag rather than expanded, so comparison
+  is set intersection and never equality. This is what makes the masculine animate accusative
+  diagnosable at all. Arity is variable for `subst`, `prep`, `ppron12` and `ppron3`; `adjp`,
+  `romandig` and `frag` had to be added to the schema after the parser raised on them, which is the
+  behaviour criterion 2 asks for.
+- **Unknown words.** Morfeusz never returns an empty list. A non-word comes back as a single `ign`
+  interpretation, so §4.6's "analyses as nothing" is `tag == 'ign'`.
+- **`sie` and `robie` are real forms** — `si:A adj:pl:acc:…` and `roba:subst:sg:dat.loc:f`. Criterion
+  8 still holds, but **only because step 3 precedes step 5**. That ordering was justified on other
+  grounds and turns out to be load-bearing for a reason the design did not anticipate.
+- **Animacy is three-valued** (`m1` personal, `m2` animate, `m3` inanimate), not binary. The
+  accusative borrows the genitive for m1 and m2 and the nominative for m3.
+- **Resident size and thread-safety.** 28 MB, 22 µs per `analyse`, 8 threads × 400 mixed calls with
+  no errors. §"The analyser is a library" holds by three orders of magnitude.
+- **`fsrs` round-trip.** `stability` survives `to_json`/`from_json` and is `None` throughout the
+  `Learning` state. Reaching stability ≥ 7 days needs genuinely spaced reviews: reviewing twice in
+  one instant leaves it flat.
+- **Edit-distance threshold.** The golden corpus **cannot** tune it — 1, 2, 3 and 4 all score 98.5%.
+  It stays at 2 and stays an assumption; the corpus does not discriminate.
+
+**Still open**
+
+- [ ] SGJP vs Polimorf coverage across the lexeme set. Licence is identical; this is a data call.
 - [ ] Azure PostgreSQL Flexible Server and container compute available on x86-64 in the target region.
-- [ ] Spec §11 Q3, Q5, Q6, Q7 remain open and do not block M0 or M1: reviewer cost (M2 gate),
-      metalanguage depth, `pan/pani` register, heritage-learner entry point.
+- [ ] **Native-speaker review of every authored frame and English gloss.** The inflected forms are
+      looked up and cannot be wrong unless SGJP is; the sentences around them are not protected that
+      way. One theme-taxonomy slip already produced `Mieszkam w oknie` with flawless morphology.
+- [ ] Spec §11 Q3, Q6, Q7 remain open and block nothing built so far: reviewer cost (an M2 gate only
+      once the LLM pipeline exists), `pan/pani` register, heritage-learner entry point.
+- [x] Spec §11 Q5 — metalanguage depth — is answered by implementation: `explain.py` uses full
+      grammatical terms ("accusative", "genitive", "masculine animate"), matching §3's target user who
+      "tolerates grammatical terminology if it is introduced properly".
