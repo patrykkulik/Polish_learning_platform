@@ -31,9 +31,10 @@ from pl.models import (
     NodePrereq,
     NodeUnlock,
     Pattern,
+    Review,
     Sense,
 )
-from pl.schedule import LEXICAL, MORPH, PATTERN, populations_for
+from pl.schedule import LEXICAL, MORPH, PATTERN, Rating, populations_for
 
 #: Days of retention a card must once have reached to count toward mastery.
 MASTERY_STABILITY_DAYS = 7.0
@@ -104,22 +105,29 @@ def _gating_refs(db: Session, node: Node) -> tuple[str, list[int]]:
 
 
 def _card_is_mastered(db: Session, card: Card | None) -> bool:
+    """Retained for a week, genuinely recalled, and known for a week.
+
+    All three conditions are read from *this card's* review history:
+
+    - `card.reps` counts every review and `card.lapses` counts `Again` only in
+      the Review state, so `reps - lapses` is not the number of successful
+      recalls and must not stand in for it.
+    - The calendar span is a property of the card, not of the account. Measured
+      account-wide it passes unconditionally once the learner is a week old, and
+      the gate silently stops gating from then on.
+    """
     if card is None or card.stability_max < MASTERY_STABILITY_DAYS:
         return False
-    successes = db.scalar(
-        select(func.count())
-        .select_from(Attempt)
-        .join(Card, Card.id == card.id)
-        .where(Attempt.user_id == card.user_id)
-    )
-    if (card.reps - card.lapses) < MASTERY_MIN_REVIEWS:
+
+    successes, first_success = db.execute(
+        select(func.count(Review.id), func.min(Attempt.created_at))
+        .join(Attempt, Attempt.id == Review.attempt_id)
+        .where(Review.card_id == card.id, Review.rating >= int(Rating.Good))
+    ).one()
+
+    if successes < MASTERY_MIN_REVIEWS or first_success is None:
         return False
-    first = db.scalar(
-        select(func.min(Attempt.created_at)).where(Attempt.user_id == card.user_id)
-    )
-    if first is None:
-        return False
-    return (datetime.now(UTC).replace(tzinfo=None) - first) >= timedelta(
+    return (datetime.now(UTC).replace(tzinfo=None) - first_success) >= timedelta(
         days=MASTERY_MIN_SPAN_DAYS
     )
 

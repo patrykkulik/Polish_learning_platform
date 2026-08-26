@@ -144,7 +144,12 @@ def cell(lemma: str, **features: str) -> Form:
 NON_INFLECTIONAL: frozenset[str] = frozenset({"brev", "adja", "pacta"})
 
 
-def paradigm_class(lemma: str, cases: tuple[str, ...], number: str = "sg") -> str:
+def paradigm_class(
+    lemma: str,
+    cases: tuple[str, ...] = (),
+    number: str = "sg",
+    pos: str = "subst",
+) -> str:
     """A stable key grouping lexemes that inflect identically across `cases`.
 
     This is the stratification key pattern cards are scheduled against, and it
@@ -167,31 +172,60 @@ def paradigm_class(lemma: str, cases: tuple[str, ...], number: str = "sg") -> st
     four of which are the strata the design names (`f-a`, `m-inanim`, `m-anim`,
     `n-o`) with `pies` and `koń` correctly isolated.
     """
-    cells = [
-        f
-        for f in forms(lemma)
-        if f.tag.pos == "subst"
-        and number in f.tag.number
-        and any(c in f.tag.case for c in cases)
-    ]
-    if not cells:
-        raise LookupError(f"{lemma!r} has no {number} forms in {cases}")
+    if pos == "subst":
+        cells = [
+            f
+            for f in forms(lemma)
+            if f.tag.pos == "subst"
+            and number in f.tag.number
+            and any(c in f.tag.case for c in cases)
+        ]
+        if not cells:
+            raise LookupError(f"{lemma!r} has no {number} forms in {cases}")
+        prefix = sorted(cells[0].tag.gender)[0] if cells[0].tag.gender else "?"
+        stem = _longest_common_prefix([f.surface for f in cells])
+        endings = sorted(
+            {
+                f"{case}-{f.surface[len(stem):] or '0'}"
+                for f in cells
+                for case in cases
+                if case in f.tag.case
+            }
+        )
+    else:
+        # Verbs stratify by conjugation, and the present tense is where Polish
+        # conjugation classes actually diverge: `czytam/czytasz`, `robię/robisz`
+        # and `piszę/piszesz` are three different things to learn. Case is not a
+        # verb feature, so `cases` is ignored here rather than misapplied.
+        cells = [f for f in forms(lemma) if f.tag.pos == "fin"]
+        if not cells:
+            raise LookupError(f"{lemma!r} has no finite present-tense forms")
+        aspects = sorted({a for f in cells for a in f.tag.values("aspect")})
+        prefix = aspects[0] if aspects else "?"
+        stem = _longest_common_prefix([f.surface for f in cells])
+        endings = sorted(
+            {
+                f"{num}{person}-{f.surface[len(stem):] or '0'}"
+                for f in cells
+                for num in f.tag.number
+                for person in f.tag.values("person")
+            }
+        )
+    return f"{prefix}:{'|'.join(endings)}"
 
-    stem = cells[0].surface
-    for other in cells[1:]:
-        while not other.surface.startswith(stem):
+
+def _longest_common_prefix(surfaces: list[str]) -> str:
+    """The shared stem, order-independently.
+
+    Truncating a prefix preserves the prefix property against everything already
+    processed, so the result does not depend on the order the cells arrive in.
+    An empty stem degrades to a singleton class, which is coarse but correct.
+    """
+    stem = surfaces[0]
+    for other in surfaces[1:]:
+        while not other.startswith(stem):
             stem = stem[:-1]
-
-    gender = sorted(cells[0].tag.gender)[0] if cells[0].tag.gender else "?"
-    endings = sorted(
-        {
-            f"{case}-{f.surface[len(stem):] or '0'}"
-            for f in cells
-            for case in cases
-            if case in f.tag.case
-        }
-    )
-    return f"{gender}:{'|'.join(endings)}"
+    return stem
 
 
 def paradigm_roundtrips(lemma: str) -> tuple[str, ...]:

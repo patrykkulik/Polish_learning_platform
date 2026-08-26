@@ -48,52 +48,154 @@ def _load(name: str):
     return yaml.safe_load((DATA / name).read_text(encoding="utf-8"))
 
 
+def rule_stratification() -> dict[str, tuple[str, ...]]:
+    """The cases each rule's strata are computed over.
+
+    A stratum exists to make difficulty homogeneous **for one rule**, so the
+    cases it is computed over must be that rule's own. One global key is wrong
+    in both directions at once: too coarse for the locative, where `sklep → w
+    sklepie` and `dom → w domu` are different things to learn, and far too fine
+    for the accusative, where folding the locative in would split seven strata
+    into twenty-seven.
+
+    The second half matters more than the first. Strata are content, and the
+    unlock gate counts them — so re-partitioning a rule the learner has already
+    mastered silently revokes a node they earned. Keying each rule to its own
+    cases means adding a case to the curriculum cannot disturb any rule that
+    does not teach it.
+    """
+    out: dict[str, tuple[str, ...]] = {}
+    for entry in _load("nodes.yaml"):
+        rule = entry.get("rule_key")
+        if rule:
+            out[rule] = tuple(entry.get("stratify_cases", STRATIFICATION_CASES))
+    return out
+
+
+def rule_node_map() -> dict[tuple[str, str], str]:
+    """(rule_key, gender) -> node key.
+
+    One rule can span several nodes: the accusative splits three ways because
+    the ending depends on gender and animacy, and all three nodes share
+    `ACC_AFTER_TRANSITIVE_VERB`.
+    """
+    out: dict[tuple[str, str], str] = {}
+    for entry in _load("nodes.yaml"):
+        rule = entry.get("rule_key")
+        if not rule:
+            continue
+        for gender in entry.get("genders", []):
+            out[(rule, gender)] = entry["key"]
+    return out
+
+
+def lexeme_themes() -> dict[str, str]:
+    """lemma -> theme, for frames that only make sense with some of the set."""
+    return {
+        entry["lemma"]: entry.get("theme", "")
+        for entry in _load("lexemes.yaml")
+    }
+
+
+def _upsert_forms(db: Session, lexeme: Lexeme, cells) -> None:
+    """Store the paradigm, keyed on the cell the design's unique constraint names.
+
+    Only inflected cells are stored. The peripheral entries `generate` attaches
+    to a lemma — abbreviations, participial adverbs — are not inflections of it
+    and no curriculum cell is ever drawn from one.
+    """
+    existing = {
+        row.morph_tag: row
+        for row in db.scalars(select(Form).where(Form.lexeme_id == lexeme.id))
+    }
+    for cell in cells:
+        row = existing.get(cell.tag.raw)
+        if row is None:
+            existing[cell.tag.raw] = Form(
+                lexeme_id=lexeme.id, surface=cell.surface, morph_tag=cell.tag.raw
+            )
+            db.add(existing[cell.tag.raw])
+        else:
+            row.surface = cell.surface
+
+
+def _upsert_sense(db: Session, lexeme: Lexeme, gloss: str) -> None:
+    sense = db.scalar(select(Sense).where(Sense.lexeme_id == lexeme.id))
+    if sense is None:
+        db.add(Sense(lexeme_id=lexeme.id, en_gloss=gloss))
+    else:
+        sense.en_gloss = gloss
+
+
 def ingest_lexemes(db: Session) -> dict[str, Lexeme]:
-    """Create lexemes, their full paradigms, and their glosses."""
+    """Create *or update* lexemes, their full paradigms, and their glosses.
+
+    An upsert, not an insert-if-absent. `paradigm_class` is derived from
+    STRATIFICATION_CASES, so extending the curriculum re-partitions every
+    stratum — and an ingest that short-circuits on a lemma it has seen before
+    leaves stale classes in place, builds new strata from them, and reports a
+    successful build either way.
+    """
     out: dict[str, Lexeme] = {}
     for rank, entry in enumerate(_load("lexemes.yaml"), start=1):
         lemma = entry["lemma"]
-        existing = db.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
-        if existing is not None:
-            out[lemma] = existing
-            continue
-
         paradigm = morph.forms(lemma)
         if not paradigm:
             raise LookupError(f"{lemma!r} generated no forms")
-        nominal = [f for f in paradigm if f.tag.pos == "subst"]
-        gender = sorted(nominal[0].tag.gender)[0]
 
-        lexeme = Lexeme(
-            lemma=lemma,
-            pos="subst",
-            gender=gender,
-            animacy=_ANIMACY.get(gender),
-            paradigm_class=morph.paradigm_class(lemma, STRATIFICATION_CASES),
-            frequency_rank=rank,
+        pos = entry.get("pos", "subst")
+        cells = [f for f in paradigm if f.tag.pos not in morph.NON_INFLECTIONAL]
+        headwords = [f for f in paradigm if f.tag.pos == pos]
+        if not headwords:
+            raise LookupError(f"{lemma!r} generated no {pos!r} forms")
+
+        gender = sorted(headwords[0].tag.gender)[0] if headwords[0].tag.gender else None
+        aspect = sorted(headwords[0].tag.values("aspect"))
+        stratify_over = entry.get("stratify_cases", STRATIFICATION_CASES)
+
+        lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
+        if lexeme is None:
+            lexeme = Lexeme(lemma=lemma)
+            db.add(lexeme)
+        lexeme.pos = pos
+        lexeme.gender = gender
+        lexeme.animacy = _ANIMACY.get(gender) if gender else None
+        lexeme.aspect = aspect[0] if aspect else None
+        lexeme.paradigm_class = morph.paradigm_class(
+            lemma, tuple(stratify_over), pos=pos
         )
-        db.add(lexeme)
+        lexeme.frequency_rank = rank
         db.flush()
 
-        # Only nominal cells are stored. The peripheral entries `generate`
-        # attaches to a lemma — abbreviations, participial adverbs — are not
-        # inflected forms of it and no curriculum cell is ever drawn from one.
-        seen: set[str] = set()
-        for form in nominal:
-            if form.tag.raw in seen:
-                continue
-            seen.add(form.tag.raw)
-            db.add(
-                Form(
-                    lexeme_id=lexeme.id,
-                    surface=form.surface,
-                    morph_tag=form.tag.raw,
-                )
-            )
-        db.add(Sense(lexeme_id=lexeme.id, en_gloss=entry["gloss"]))
+        _upsert_forms(db, lexeme, cells)
+        _upsert_sense(db, lexeme, entry["gloss"])
         out[lemma] = lexeme
+
+    _link_aspect_partners(db, out)
     db.flush()
     return out
+
+
+def _link_aspect_partners(db: Session, lexemes: dict[str, Lexeme]) -> None:
+    """Point each verb at its partner, both ways.
+
+    Aspect is taught from the first verb, never bolted on later, so a verb whose
+    partner is absent from the lexeme set is an authoring error rather than
+    something to tolerate — the learner would meet an imperfective with no
+    perfective to contrast it against.
+    """
+    for entry in _load("lexemes.yaml"):
+        partner_lemma = entry.get("aspect_partner")
+        if partner_lemma is None:
+            continue
+        lexeme = lexemes[entry["lemma"]]
+        partner = lexemes.get(partner_lemma)
+        if partner is None:
+            raise LookupError(
+                f"{entry['lemma']!r} names aspect partner {partner_lemma!r}, "
+                f"which is not in the lexeme set"
+            )
+        lexeme.aspect_partner_id = partner.id
 
 
 def ingest_nodes(db: Session, lexemes: dict[str, Lexeme]) -> dict[str, Node]:
@@ -142,18 +244,12 @@ def ingest_nodes(db: Session, lexemes: dict[str, Lexeme]) -> dict[str, Node]:
         # One pattern per (rule, paradigm class) actually present among the
         # node's lexemes. Creating strata that no lexeme populates would put an
         # unreachable card in the unlock gate's denominator.
-        if rule_key and genders:
-            for cls in sorted({lex.paradigm_class for lex in eligible}):
-                exists = db.scalar(
-                    select(Pattern).where(
-                        Pattern.rule_key == rule_key,
-                        Pattern.paradigm_class == cls,
-                    )
-                )
-                if exists is None:
-                    db.add(
-                        Pattern(node_id=node.id, rule_key=rule_key, paradigm_class=cls)
-                    )
+        # Patterns are *not* created here. A stratum only earns a place in the
+        # unlock gate's denominator if some item can exercise it, and whether
+        # one can depends on the frames — which additionally restrict by theme.
+        # Deriving strata from the node's gender list alone manufactures cards
+        # the learner can never be shown, and a node containing one of those can
+        # never be mastered. See frames.ensure_patterns.
     db.flush()
     return nodes
 

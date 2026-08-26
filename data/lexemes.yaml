@@ -45,13 +45,13 @@
   theme: clothes
 - lemma: szkoła
   gloss: school
-  theme: city
+  theme: venue
 - lemma: ulica
   gloss: street
   theme: city
 - lemma: praca
   gloss: work
-  theme: city
+  theme: venue
 - lemma: matka
   gloss: mother
   theme: people
@@ -64,13 +64,13 @@
 
 - lemma: sklep
   gloss: shop
-  theme: city
+  theme: venue
 - lemma: dom
   gloss: house
-  theme: home
+  theme: venue
 - lemma: ogród
   gloss: garden
-  theme: home
+  theme: venue
 - lemma: stół
   gloss: table
   theme: home
@@ -137,10 +137,10 @@
   theme: home
 - lemma: mieszkanie
   gloss: flat
-  theme: home
+  theme: venue
 - lemma: miasto:S
   gloss: city
-  theme: city
+  theme: venue
 - lemma: morze
   gloss: sea
   theme: nature
@@ -153,3 +153,48 @@
 - lemma: piwo
   gloss: beer
   theme: food
+
+# Added for M2. The city and abstract themes give the genitive-preposition and
+# locative frames somewhere to point; `kościół` is here specifically because its
+# locative (`w kościele`) carries the ó/o alternation the design singles out.
+- lemma: czas:S
+  gloss: time
+  theme: abstract
+- lemma: muzyka
+  gloss: music
+  theme: abstract
+- lemma: kino
+  gloss: cinema
+  theme: venue
+- lemma: park
+  gloss: park
+  theme: venue
+- lemma: hotel
+  gloss: hotel
+  theme: venue
+- lemma: restauracja
+  gloss: restaurant
+  theme: venue
+- lemma: biuro
+  gloss: office
+  theme: venue
+- lemma: kościół
+  gloss: church
+  theme: venue
+- lemma: uniwersytet
+  gloss: university
+  theme: venue
+
+# Abstract nouns, so `interesować się` has something it can plausibly govern.
+- lemma: historia
+  gloss: history
+  theme: abstract
+- lemma: sport
+  gloss: sport
+  theme: abstract
+- lemma: film
+  gloss: film
+  theme: abstract
+- lemma: sztuka
+  gloss: art
+  theme: abstract

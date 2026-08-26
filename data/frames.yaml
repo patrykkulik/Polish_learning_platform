@@ -94,3 +94,86 @@
   case: nom
   vocabulary: true
   distractor_lexemes: 3
+
+# ------------------------------------------------------------ instrumental
+# `themes` keeps a frame off lexemes it would be nonsense with. "Jestem
+# sklepem" inflects correctly and means nothing; a morphology drill the learner
+# cannot read as a sentence is a worse drill.
+- key: INST_PREDICATE
+  exercise_type: cloze
+  template: "Jestem ___."
+  gloss: "I am a {gloss}."
+  case: inst
+  rule_key: INST
+  themes: [people]
+
+- key: INST_WITH
+  exercise_type: cloze
+  template: "Idę z ___."
+  gloss: "I am going with the {gloss}."
+  case: inst
+  rule_key: INST
+  themes: [people, animals]
+
+- key: INST_INTEREST
+  exercise_type: cloze
+  template: "Interesuję się ___."
+  gloss: "I am interested in {gloss}."
+  case: inst
+  rule_key: INST
+  themes: [abstract]
+
+# ------------------------------------------------------------ genitive
+- key: GEN_NIE_MAM
+  exercise_type: cloze
+  template: "Nie mam ___."
+  gloss: "I do not have the {gloss}."
+  case: gen
+  rule_key: GEN_NEGATION
+
+- key: GEN_NIE_MA
+  exercise_type: cloze
+  template: "Nie ma ___."
+  gloss: "There is no {gloss}."
+  case: gen
+  rule_key: GEN_NEGATION
+
+- key: GEN_POSSESSOR
+  exercise_type: cloze
+  template: "To jest dom ___."
+  gloss: "This is the {gloss}'s house."
+  case: gen
+  rule_key: GEN_POSSESSION
+  themes: [people]
+
+- key: GEN_DO
+  exercise_type: cloze
+  template: "Idę do ___."
+  gloss: "I am going to the {gloss}."
+  case: gen
+  rule_key: GEN_PREPOSITION
+  themes: [venue]
+
+- key: GEN_DLA
+  exercise_type: cloze
+  template: "To jest dla ___."
+  gloss: "This is for the {gloss}."
+  case: gen
+  rule_key: GEN_PREPOSITION
+  themes: [people, animals]
+
+# ------------------------------------------------------------ locative
+- key: LOC_W
+  exercise_type: cloze
+  template: "Jestem w ___."
+  gloss: "I am at the {gloss}."
+  case: loc
+  rule_key: LOC_PREPOSITION
+  themes: [venue]
+
+- key: LOC_O
+  exercise_type: cloze
+  template: "Myślę o ___."
+  gloss: "I am thinking about the {gloss}."
+  case: loc
+  rule_key: LOC_PREPOSITION

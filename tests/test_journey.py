@@ -225,3 +225,104 @@ def test_a_diligent_learner_reaches_the_grammar(db, user):
         f"never unlocked the first grammar node; unlocked={unlocked}"
     )
     assert day < horizon, f"unlocked only on the final day ({day}); bound is too tight"
+
+
+def test_re_ingest_recomputes_derived_fields(db, monkeypatch):
+    """A curriculum edit must actually reach the database.
+
+    `paradigm_class` is derived from the cases the curriculum teaches, so adding
+    a case re-partitions every stratum. The design records that re-ingest as the
+    known cost of deriving the stratum rather than hand-assigning it — which only
+    holds if re-ingest recomputes. An ingest that short-circuits on the lemma
+    leaves stale classes behind and then builds new `pattern` rows from them,
+    and the operator sees a successful build either way.
+    """
+    from pl.content import ingest as ingest_mod
+    from pl.models import Lexeme
+
+    before = {
+        lx.lemma: lx.paradigm_class for lx in db.scalars(select(Lexeme))
+    }
+    # sklep takes -u and chleb takes -a in the genitive; nothing in the
+    # nominative or accusative separates them.
+    assert before["sklep"] == before["chleb"]
+
+    monkeypatch.setattr(
+        ingest_mod, "STRATIFICATION_CASES", ("nom", "acc", "gen")
+    )
+    ingest_mod.ingest_lexemes(db)
+    db.commit()
+
+    after = {lx.lemma: lx.paradigm_class for lx in db.scalars(select(Lexeme))}
+    assert after["sklep"] != after["chleb"], (
+        "adding the genitive did not re-partition the strata; "
+        f"both are still {after['sklep']!r}"
+    )
+
+
+def test_mastery_span_is_measured_per_card_not_per_account(db, user):
+    """The seven-day span belongs to the card, not to the account.
+
+    Measuring it from the learner's first-ever attempt makes the condition pass
+    unconditionally once the account is a week old. Every card met after that
+    masters on stability and a rep count alone, so every node from then on
+    unlocks on a gate that has quietly stopped gating.
+    """
+    from pl import schedule
+    from pl.models import Sense
+    from pl.session import is_mastered
+
+    v01 = db.scalar(select(Node).where(Node.key == "V01"))
+    vocab = [
+        i
+        for i in db.scalars(select(Item).where(Item.node_id == v01.id))
+    ]
+
+    # A fortnight of account history, so the account-wide span is satisfied.
+    answer(db, user, vocab[0])
+    for attempt in db.scalars(select(Attempt)):
+        attempt.created_at -= timedelta(days=14)
+    db.commit()
+
+    # Now drill every card in the node — genuinely, three times each — but all
+    # of it today. No card has been known for a week.
+    for _ in range(3):
+        for item in vocab:
+            answer(db, user, item)
+    for card in db.scalars(select(Card).where(Card.user_id == user.id)):
+        card.stability_max = 30.0
+    db.commit()
+
+    assert not is_mastered(db, user.id, v01), (
+        "a node whose every card was first seen today was reported mastered"
+    )
+
+
+def test_strata_reflect_the_rule_they_belong_to(db):
+    """Each rule stratifies on the cases that rule actually teaches.
+
+    `sklep` and `dom` inflect identically in the accusative and differently in
+    the locative — `w sklepie` against `w domu`. One global key cannot serve
+    both rules: computed over the accusative it merges two locative behaviours
+    into a single card, and computed over every case it splits the accusative
+    node into two dozen strata the learner has never seen, taking back a node
+    they had already mastered.
+    """
+    from pl.models import Form, Lexeme
+
+    def pattern_of(lemma: str, rule: str):
+        lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
+        return db.scalar(
+            select(Item.pattern_id)
+            .join(Pattern, Pattern.id == Item.pattern_id)
+            .join(Form, Form.id == Item.target_form_id)
+            .where(Pattern.rule_key == rule, Form.lexeme_id == lexeme.id)
+        )
+
+    assert pattern_of("sklep", "ACC_AFTER_TRANSITIVE_VERB") == pattern_of(
+        "dom", "ACC_AFTER_TRANSITIVE_VERB"
+    ), "two nouns with the same accusative belong in one accusative stratum"
+
+    assert pattern_of("sklep", "LOC_PREPOSITION") != pattern_of(
+        "dom", "LOC_PREPOSITION"
+    ), "two nouns with different locatives were put in the same locative stratum"

@@ -18,6 +18,8 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pl import morph
+from pl.content.ingest import lexeme_themes, rule_node_map, rule_stratification
 from pl.models import Form, Item, Lexeme, Node, Pattern, Sense
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
@@ -52,9 +54,57 @@ def _cell(cells: list[Form], case: str, number: str = "sg") -> Form | None:
     return None
 
 
+def ensure_patterns(db: Session) -> list[Pattern]:
+    """Create exactly the strata that some frame can actually populate.
+
+    Derived from frames × lexemes rather than from a node's gender list, because
+    a stratum is counted in the unlock gate's denominator whether or not any
+    item exercises it. One unpopulatable stratum makes its node permanently
+    unmasterable, and everything downstream of that node unreachable — silently,
+    because the gate only raises when a node has *no* strata at all.
+    """
+    rule_cases = rule_stratification()
+    themes = lexeme_themes()
+    node_of = rule_node_map()
+    nodes = {n.key: n for n in db.scalars(select(Node))}
+    existing = {
+        (p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))
+    }
+    created: list[Pattern] = []
+
+    for frame in _frames():
+        rule = frame.get("rule_key")
+        if not rule or frame.get("vocabulary"):
+            continue
+        admitted = frame.get("themes")
+        for lexeme in db.scalars(select(Lexeme)):
+            if admitted and themes.get(lexeme.lemma) not in admitted:
+                continue
+            if _cell(_cells(db, lexeme), frame["case"]) is None:
+                continue
+            node_key = node_of.get((rule, lexeme.gender))
+            if node_key is None:
+                continue
+            stratum = morph.paradigm_class(
+                lexeme.lemma, rule_cases[rule], pos=lexeme.pos
+            )
+            if (rule, stratum) in existing:
+                continue
+            pattern = Pattern(
+                node_id=nodes[node_key].id, rule_key=rule, paradigm_class=stratum
+            )
+            db.add(pattern)
+            existing[(rule, stratum)] = pattern
+            created.append(pattern)
+
+    db.flush()
+    return created
+
+
 def build_items(db: Session) -> list[Item]:
     """Generate every item. Idempotent: existing items are left alone."""
     rng = random.Random(SEED)
+    ensure_patterns(db)
     lexemes = list(db.scalars(select(Lexeme)))
     patterns = {
         (p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))
@@ -66,6 +116,9 @@ def build_items(db: Session) -> list[Item]:
     # Item identity includes the exercise type. Without it a multiple-choice
     # frame sharing a template and case with a cloze frame — which is exactly
     # what a form-selection MCQ is — collides with it and is dropped.
+    rule_cases = rule_stratification()
+    themes = lexeme_themes()
+
     preexisting = {
         (i.exercise_type, i.prompt, i.expected_answer)
         for i in db.scalars(select(Item))
@@ -78,11 +131,20 @@ def build_items(db: Session) -> list[Item]:
             cells = _cells(db, lexeme)
             gloss = glosses.get(lexeme.id, lexeme.lemma)
 
+            # A frame may only make sense for part of the lexeme set. "Jestem
+            # sklepem" inflects correctly and means nothing, and a drill the
+            # learner cannot read as a sentence is a worse drill.
+            admitted = frame.get("themes")
+            if admitted and themes.get(lexeme.lemma) not in admitted:
+                continue
+
             if frame.get("vocabulary"):
                 item = _meaning_item(frame, lexeme, cells, gloss, nodes, lexemes,
                                      glosses, rng)
             else:
-                item = _form_item(frame, lexeme, cells, gloss, patterns, rng)
+                item = _form_item(
+                    frame, lexeme, cells, gloss, patterns, rng, rule_cases
+                )
 
             if item is None:
                 continue
@@ -111,12 +173,17 @@ def build_items(db: Session) -> list[Item]:
     return created
 
 
-def _form_item(frame, lexeme, cells, gloss, patterns, rng) -> Item | None:
+def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item | None:
     target = _cell(cells, frame["case"])
     if target is None:
         return None
 
-    pattern = patterns.get((frame["rule_key"], lexeme.paradigm_class))
+    # The stratum is computed over this rule's cases, not over the lexeme's
+    # global class — see ingest.rule_stratification.
+    stratum = morph.paradigm_class(
+        lexeme.lemma, rule_cases[frame["rule_key"]], pos=lexeme.pos
+    )
+    pattern = patterns.get((frame["rule_key"], stratum))
     if pattern is None:
         return None
 

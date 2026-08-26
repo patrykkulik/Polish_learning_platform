@@ -22,6 +22,7 @@
   cefr_level: A1
   prereqs: [V01]
   rule_key: NOM_SG
+  stratify_cases: [nom]
   genders: [f, m1, m2, m3, n]
   explanation_md: |
     The **nominative** is the dictionary form — the form a noun takes when it is
@@ -35,6 +36,7 @@
   cefr_level: A1
   prereqs: [N01]
   rule_key: NOM_PREDICATE
+  stratify_cases: [nom]
   genders: [f, m1, m2, m3, n]
   explanation_md: |
     `To jest…` — *this is…* — takes the nominative, whatever the gender. `To` does
@@ -46,6 +48,7 @@
   cefr_level: A1
   prereqs: [N01]
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  stratify_cases: [nom, acc]
   genders: [f]
   explanation_md: |
     The **accusative** marks the direct object — the thing the verb acts on.
@@ -57,6 +60,7 @@
   cefr_level: A1
   prereqs: [N01]
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  stratify_cases: [nom, acc]
   genders: [m3, n]
   explanation_md: |
     Masculine **inanimate** nouns and all neuters look identical in the
@@ -68,6 +72,7 @@
   cefr_level: A1
   prereqs: [N03, N04]
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  stratify_cases: [nom, acc]
   genders: [m1, m2]
   explanation_md: |
     This is the one that catches everybody. A masculine noun that is **alive** —
@@ -85,3 +90,79 @@
   explanation_md: |
     Putting it together: naming something, then saying you have it or see it.
     Nothing new here — this composes what N02 and N03–N05 already taught.
+
+# ---------------------------------------------------------------- case 3
+# The specification's order puts the instrumental third on purpose: high
+# utility, regular endings, and a confidence builder before the genitive.
+- key: N07
+  type: grammar
+  title: Instrumental singular
+  cefr_level: A1
+  prereqs: [N06]
+  rule_key: INST
+  stratify_cases: [nom, inst]
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    The **instrumental** answers *with what?* and *as what?*. It is the most
+    regular case in the language: masculine and neuter take `-em`, feminine
+    takes `-ą`. Almost nothing surprises you here.
+
+    `Jestem nauczycielem` — *I am a teacher*. `Idę z bratem` — *I'm going with
+    my brother*.
+
+# ---------------------------------------------------------------- case 4
+# The workhorse, split three ways as the specification requires. Teaching
+# negation, possession and government in one node would be a bite too large.
+- key: N08
+  type: grammar
+  title: Genitive after negation
+  cefr_level: A1
+  prereqs: [N07]
+  rule_key: GEN_NEGATION
+  stratify_cases: [nom, gen]
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    Negate a verb that takes the accusative and its object switches to the
+    **genitive**. `Mam czas` → `Nie mam czasu`. This is not optional and it has
+    no equivalent in English, so it is worth over-practising.
+
+- key: N09
+  type: grammar
+  title: Genitive for possession
+  cefr_level: A1
+  prereqs: [N08]
+  rule_key: GEN_POSSESSION
+  stratify_cases: [nom, gen]
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    Polish has no *'s*. Possession runs the other way round, with the owner in
+    the genitive after the thing owned: `dom brata` — *my brother's house*.
+
+- key: N10
+  type: grammar
+  title: Genitive after prepositions
+  cefr_level: A1
+  prereqs: [N08]
+  rule_key: GEN_PREPOSITION
+  stratify_cases: [nom, gen]
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    A large group of prepositions governs the genitive — `do`, `od`, `u`, `dla`,
+    `bez`, `obok`, `według` and more. The preposition decides the case; the noun
+    has no say in it.
+
+# ---------------------------------------------------------------- case 5
+- key: N11
+  type: grammar
+  title: Locative singular
+  cefr_level: A1
+  prereqs: [N10]
+  rule_key: LOC_PREPOSITION
+  stratify_cases: [nom, loc]
+  genders: [f, m1, m2, m3, n]
+  explanation_md: |
+    The **locative** never appears without a preposition — `w`, `na`, `o`, `po`,
+    `przy`. It is also where Polish consonant alternations show up in force:
+    `Kraków → w Krakowie`, `książka → o książce`, `herbata → w herbacie`.
+
+    Those alternations are the lesson, not an inconvenience around it.
