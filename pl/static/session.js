@@ -26,14 +26,56 @@ function setProgress(p) {
   document.getElementById("s-retained").textContent = `${p.retained}/${p.tracked}`;
 }
 
+/* Every request goes through here, because none of them checked `res.ok`.
+ *
+ * A failure still parses as JSON — FastAPI returns `{"detail": ...}` — so the
+ * caller read `data.items` or `data.error_class` off an error body, got
+ * undefined, and threw somewhere further on. The learner saw a page that had
+ * simply stopped: no message, and an answer that appeared to have been
+ * swallowed rather than rejected. */
+async function request(url, options) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (e) {
+    throw new Error("The server could not be reached.");
+  }
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.json()).detail || "";
+    } catch (e) {
+      /* An error page that is not JSON. The status is the whole message. */
+    }
+    throw new Error(detail || `The server returned ${res.status}.`);
+  }
+  return res.json();
+}
+
+/* Say so, and leave a way out. A dead page is the one thing this must not be. */
+function fail(message, retry) {
+  stage.innerHTML = `
+    <div class="done">
+      <h2>Something went wrong</h2>
+      <p>${escapeHtml(message)}</p>
+      <p><button class="primary" id="retry">Try again</button></p>
+    </div>
+  `;
+  document.getElementById("retry").onclick = retry || (() => location.reload());
+}
+
 function advanceRail() {
   rail.style.width = queue.length ? `${(index / queue.length) * 100}%` : "0%";
 }
 
 async function load() {
-  const res = await fetch("/api/session?limit=20");
-  const data = await res.json();
-  queue = data.items;
+  let data;
+  try {
+    data = await request("/api/session?limit=20");
+  } catch (e) {
+    return fail(e.message, load);
+  }
+  queue = data.items || [];
   setProgress(data.progress);
   index = 0;
   completed = 0;
@@ -117,16 +159,23 @@ function renderChoices(item) {
 
 async function submit(answer) {
   const item = queue[index];
-  const res = await fetch("/api/submit", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      item_id: item.id,
-      answer: answer || "",
-      latency_ms: Math.round(performance.now() - shown),
-    }),
-  });
-  const data = await res.json();
+  let data;
+  try {
+    data = await request("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        item_id: item.id,
+        answer: answer || "",
+        latency_ms: Math.round(performance.now() - shown),
+      }),
+    });
+  } catch (e) {
+    // Retrying re-renders the same item with the answer still in hand, rather
+    // than counting an attempt the server never recorded.
+    return fail(e.message, render);
+  }
+  // Counted only once the server has actually recorded it.
   completed += 1;
   setProgress(data.progress);
   showVerdict(data);
@@ -191,10 +240,14 @@ function next() {
 }
 
 async function finish() {
-  const res = await fetch(`/api/session/complete?items_completed=${completed}`, {
-    method: "POST",
-  });
-  const data = await res.json();
+  let data;
+  try {
+    data = await request(`/api/session/complete?items_completed=${completed}`, {
+      method: "POST",
+    });
+  } catch (e) {
+    return fail(e.message, finish);
+  }
   setProgress(data.progress);
   rail.style.width = "100%";
 
