@@ -274,7 +274,17 @@ def classify_sentence(
         return result(ErrorClass.LEXICAL)
 
     if len(tokens) > len(wanted):
-        return result(ErrorClass.WORD_ORDER)
+        # Reached only when the expected sentence is a strict prefix of what was
+        # typed: every position matched and tokens are left over. Calling that
+        # WORD_ORDER was a false statement — nothing was reordered — and
+        # `explain` rendered a word-order lesson to a learner who had not
+        # misordered anything. It is the same judgement the loop above makes for
+        # a word that does not belong here, so it gets the same class.
+        #
+        # A surplus constituent has no class of its own. Adding one is a change
+        # to the taxonomy and the routing table, which is a design decision, not
+        # something to smuggle in as a fix.
+        return result(ErrorClass.LEXICAL)
     return result(ErrorClass.CORRECT)
 
 

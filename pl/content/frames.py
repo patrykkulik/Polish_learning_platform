@@ -103,6 +103,11 @@ def ensure_patterns(db: Session) -> list[Pattern]:
         (p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))
     }
     created: list[Pattern] = []
+    #: Every stratum the *current* stratification yields, whether or not a row
+    #: for it already exists. Compared against the database at the end: seeding
+    #: this from `existing` instead would make the comparison vacuous, since
+    #: every stored row is in `existing` by construction.
+    producible: set[tuple[str, str]] = set()
 
     for frame in _frames():
         rule = frame.get("rule_key")
@@ -122,6 +127,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
             stratum = morph.paradigm_class(
                 lexeme.lemma, rule_cases[rule], pos=lexeme.pos
             )
+            producible.add((rule, stratum))
             if (rule, stratum) in existing:
                 continue
             pattern = Pattern(
@@ -153,6 +159,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
         stratum = morph.paradigm_class(
             lexeme.lemma, rule_cases[rule], pos=lexeme.pos
         )
+        producible.add((rule, stratum))
         if (rule, stratum) in existing:
             continue
         pattern = Pattern(
@@ -163,7 +170,42 @@ def ensure_patterns(db: Session) -> list[Pattern]:
         created.append(pattern)
 
     db.flush()
+    _assert_no_orphaned_strata(db, producible)
     return created
+
+
+def _assert_no_orphaned_strata(
+    db: Session, producible: set[tuple[str, str]]
+) -> None:
+    """Refuse a build that has re-partitioned an existing database's strata.
+
+    `paradigm_class` is derived from a rule's `stratify_cases`, so editing that
+    list renames every stratum it produces. On a fresh database that is simply
+    the new partition. On one that already has content it is a migration: the
+    old `Pattern` rows stay, still carrying items and still counted in their
+    nodes' unlock denominators, where no newly-built item can ever satisfy them.
+
+    That is exactly the permanently-unmasterable node this function was written
+    to prevent, arriving on the *second* build instead of the first — and
+    silently, because every individual row is well-formed.
+
+    Reconciling automatically would mean repointing items at the new stratum and
+    deciding what becomes of the cards scheduled against the old one. That is a
+    judgement about the learner's history, so it is refused rather than guessed.
+    """
+    orphaned = sorted(
+        (p.rule_key, p.paradigm_class)
+        for p in db.scalars(select(Pattern))
+        if (p.rule_key, p.paradigm_class) not in producible
+    )
+    if orphaned:
+        raise AssertionError(
+            f"the stratification has changed: {len(orphaned)} pattern(s) in the "
+            f"database can no longer be produced by any lexeme — {orphaned}. "
+            f"Their items are orphaned and their strata still count towards "
+            f"unlocking, so they can never be mastered. Rebuild into a fresh "
+            f"database, or migrate the affected items and cards deliberately."
+        )
 
 
 def build_items(db: Session) -> list[Item]:

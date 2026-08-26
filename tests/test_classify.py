@@ -16,7 +16,7 @@ import yaml
 
 from pl import morph
 from pl.domain import ErrorClass, ExpectedSlot
-from pl.grade import classify, explain
+from pl.grade import classify, classify_sentence, explain
 
 GOLDEN = Path(__file__).parent / "data" / "golden.yaml"
 
@@ -167,3 +167,103 @@ def test_case_error_message_names_both_cases():
     slot = _slot({"lemma": "sklep", "cell": {"number": "sg", "case": "gen"}})
     message = explain(classify(slot, "sklepie"))
     assert "locative" in message and "genitive" in message
+
+
+# ---------------------------------------------- the multi-slot classifier
+
+# `classify_sentence` had no cases at all: every branch it owns — absence,
+# transposition, a non-target misspelling, a surplus constituent — was reachable
+# only through a full dictation item, and none of them was ever asserted.
+#
+# Kept here as a table rather than in golden.yaml because the corpus there is
+# the M0 kill-gate and its arithmetic is defined over single-slot cases; mixing
+# these in would move the denominators the gate is expressed in.
+
+SENTENCE_CASES = [
+    # id, expected tokens, target lemma, cell, target index, submitted, expect
+    (
+        "sentence-correct",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę kota.", ErrorClass.CORRECT,
+    ),
+    (
+        "sentence-correct-ignores-case-and-punctuation",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "widzę kota", ErrorClass.CORRECT,
+    ),
+    (
+        "sentence-missing-constituent",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę.", ErrorClass.MISSING_CONSTITUENT,
+    ),
+    (
+        "sentence-word-order",
+        ["brat", "czyta", "książkę"], "książka", {"number": "sg", "case": "acc"}, 2,
+        "Książkę czyta brat.", ErrorClass.WORD_ORDER,
+    ),
+    (
+        "sentence-target-case-wrong",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę kotu.", ErrorClass.CASE_WRONG,
+    ),
+    (
+        # m2: the accusative borrows the genitive, so the bare nominative is the
+        # animacy error rather than a generic wrong case — and it stays that
+        # inside a sentence, which is the point of routing the target position
+        # through the full classifier.
+        "sentence-target-nominative-for-animate-accusative",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę kot.", ErrorClass.ANIMACY,
+    ),
+    (
+        "sentence-target-lexical",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę psa.", ErrorClass.LEXICAL,
+    ),
+    (
+        "sentence-orthography-away-from-the-target",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widze kota.", ErrorClass.ORTHOGRAPHY,
+    ),
+    (
+        "sentence-lexical-away-from-the-target",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Mam kota.", ErrorClass.LEXICAL,
+    ),
+    (
+        "sentence-surplus-constituent",
+        ["widzę", "kota"], "kot:Sm2", {"number": "sg", "case": "acc"}, 1,
+        "Widzę kota dzisiaj.", ErrorClass.LEXICAL,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "expected", "lemma", "cell", "index", "submitted", "want"),
+    SENTENCE_CASES,
+    ids=[c[0] for c in SENTENCE_CASES],
+)
+def test_sentence_cases(case_id, expected, lemma, cell, index, submitted, want):
+    slot = _slot({"lemma": lemma, "cell": cell})
+    got = classify_sentence(expected, index, slot, submitted).error_class
+    assert got is want, f"{case_id}: expected {want}, got {got}"
+
+
+def test_a_surplus_constituent_is_not_called_a_word_order_error():
+    """It was, and nothing was reordered.
+
+    The sentence matched at every position and the learner typed extra words —
+    an insertion, not a transposition — so `explain` rendered a word-order
+    lesson to someone who had not misordered anything.
+    """
+    slot = _slot({"lemma": "kot:Sm2", "cell": {"number": "sg", "case": "acc"}})
+    got = classify_sentence(["widzę", "kota"], 1, slot, "Widzę kota dzisiaj.")
+    assert got.error_class is not ErrorClass.WORD_ORDER
+
+
+def test_every_class_a_sentence_can_produce_is_routed():
+    """The same guarantee the single-slot table has, for the multi-slot path."""
+    from pl.schedule import ROUTING
+
+    for case in SENTENCE_CASES:
+        assert case[6] in ROUTING, f"{case[0]} produces {case[6]}, which routes nowhere"

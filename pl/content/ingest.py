@@ -12,13 +12,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pl import morph
 from pl.models import (
     AppUser,
     Form,
+    Item,
     Lexeme,
     Node,
     NodeLexeme,
@@ -121,6 +122,7 @@ def _upsert_forms(db: Session, lexeme: Lexeme, cells) -> None:
         row.morph_tag: row
         for row in db.scalars(select(Form).where(Form.lexeme_id == lexeme.id))
     }
+    wanted = {cell.tag.raw for cell in cells}
     for cell in cells:
         row = existing.get(cell.tag.raw)
         if row is None:
@@ -130,6 +132,28 @@ def _upsert_forms(db: Session, lexeme: Lexeme, cells) -> None:
             db.add(existing[cell.tag.raw])
         else:
             row.surface = cell.surface
+
+    # An upsert that only ever adds leaves cells the generator has stopped
+    # producing — after a dictionary update, or a change to what counts as
+    # inflectional — sitting in the paradigm the grader reads. A wrong answer
+    # then matches a form of the right lexeme and is graded as merely the wrong
+    # cell, which is the one diagnosis it cannot be.
+    #
+    # An item pointing at such a cell is a different problem: deleting the row
+    # would orphan the item, so that is reported rather than resolved. Silently
+    # keeping it is what this exists to stop.
+    for tag, row in existing.items():
+        if tag in wanted:
+            continue
+        referenced = db.scalar(
+            select(func.count()).select_from(Item).where(Item.target_form_id == row.id)
+        )
+        if referenced:
+            raise AssertionError(
+                f"{lexeme.lemma!r} no longer has a {tag!r} cell, but {referenced} "
+                f"item(s) still expect it. Rebuild the items for this lexeme."
+            )
+        db.delete(row)
 
 
 def _upsert_sense(db: Session, lexeme: Lexeme, gloss: str) -> None:
@@ -185,8 +209,35 @@ def ingest_lexemes(db: Session) -> dict[str, Lexeme]:
         out[lemma] = lexeme
 
     _link_aspect_partners(db, out)
+    _assert_nothing_was_withdrawn(db, out)
     db.flush()
     return out
+
+
+def _assert_nothing_was_withdrawn(db: Session, current: dict[str, Lexeme]) -> None:
+    """Report lexemes the database holds and the curriculum no longer declares.
+
+    Deliberately not a deletion. A lexeme owns forms, forms are named by items,
+    and items carry the learner's cards and attempt history — so removing it
+    quietly discards review history for a decision that was only meant to change
+    what gets taught next. Keeping it quietly is worse than either: its items
+    stay offerable, and its strata stay in the unlock denominators of nodes it
+    was withdrawn from, where nothing can now satisfy them.
+
+    So it is neither, and the operator decides.
+    """
+    stale = sorted(
+        row.lemma
+        for row in db.scalars(select(Lexeme))
+        if row.lemma not in current
+    )
+    if stale:
+        raise AssertionError(
+            f"{len(stale)} lexeme(s) withdrawn from the curriculum are still in "
+            f"the database: {stale}. Their items remain offerable and their "
+            f"strata still count towards unlocking. Remove them and the cards "
+            f"that depend on them deliberately, or restore the declarations."
+        )
 
 
 def _link_aspect_partners(db: Session, lexemes: dict[str, Lexeme]) -> None:
@@ -197,6 +248,14 @@ def _link_aspect_partners(db: Session, lexemes: dict[str, Lexeme]) -> None:
     something to tolerate — the learner would meet an imperfective with no
     perfective to contrast it against.
     """
+    # Cleared before relinking, because the declaration can be *removed*. Left
+    # as it was, a verb goes on being contrasted against a partner the
+    # curriculum no longer pairs it with — and `aspect_partner` is what the
+    # ASPECT_WRONG diagnosis reads, so the stale link outlives the decision to
+    # drop it in the one place a learner would notice.
+    for lexeme in lexemes.values():
+        lexeme.aspect_partner_id = None
+
     for entry in _load("lexemes.yaml"):
         partner_lemma = entry.get("aspect_partner")
         if partner_lemma is None:

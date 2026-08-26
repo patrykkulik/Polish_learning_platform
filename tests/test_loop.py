@@ -382,3 +382,111 @@ def test_a_rejected_sentence_leaves_no_half_built_database(monkeypatch):
         "a failed build committed items anyway"
     )
     session.close()
+
+
+# ------------------------------------------- reconciling against a live database
+
+
+def _fresh():
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, expire_on_commit=False, future=True)()
+
+
+def test_dropping_an_aspect_partner_clears_the_link(monkeypatch):
+    """The upsert wrote links and never removed one.
+
+    `aspect_partner` drives the ASPECT_WRONG diagnosis. Removing the declaration
+    from the curriculum left the old id in place, so the grader kept contrasting
+    a verb against a partner the curriculum no longer paired it with.
+    """
+    session = _fresh()
+    lexemes = ingest.ingest_lexemes(session)
+    linked = next(
+        lx for lx in lexemes.values() if lx.aspect_partner_id is not None
+    )
+    lemma = linked.lemma
+
+    real = ingest._load
+
+    def without_partners(name):
+        rows = real(name)
+        if name == "lexemes.yaml":
+            return [{k: v for k, v in r.items() if k != "aspect_partner"} for r in rows]
+        return rows
+
+    monkeypatch.setattr(ingest, "_load", without_partners)
+    ingest.ingest_lexemes(session)
+
+    again = session.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
+    assert again.aspect_partner_id is None, (
+        "the curriculum no longer pairs these verbs, but the link survived"
+    )
+    session.close()
+
+
+def test_a_withdrawn_lexeme_is_reported_not_left_behind(monkeypatch):
+    """Deleting it would take the learner's cards with it, so this must be loud.
+
+    Silently keeping it is worse than either: its items stay offerable and its
+    strata stay in the unlock denominators of nodes it was withdrawn from.
+    """
+    session = _fresh()
+    ingest.ingest_lexemes(session)
+
+    real = ingest._load
+
+    def missing_one(name):
+        rows = real(name)
+        if name != "lexemes.yaml":
+            return rows
+        partners = {r["aspect_partner"] for r in rows if r.get("aspect_partner")}
+        victim = next(
+            r for r in rows
+            if r.get("pos", "subst") == "subst" and r["lemma"] not in partners
+        )
+        return [r for r in rows if r is not victim]
+
+    monkeypatch.setattr(ingest, "_load", missing_one)
+    with pytest.raises(AssertionError, match="withdrawn"):
+        ingest.ingest_lexemes(session)
+    session.close()
+
+
+def test_a_stale_form_is_removed_when_nothing_points_at_it():
+    """A cell the generator no longer produces must not stay answerable."""
+    session = _fresh()
+    lexemes = ingest.ingest_lexemes(session)
+    lexeme = next(iter(lexemes.values()))
+    ghost = Form(
+        lexeme_id=lexeme.id, surface="wymyślony", morph_tag="subst:sg:nom:f9"
+    )
+    session.add(ghost)
+    session.flush()
+
+    ingest.ingest_lexemes(session)
+    assert session.get(Form, ghost.id) is None, "a withdrawn cell survived the ingest"
+    session.close()
+
+
+def test_restratification_that_orphans_items_is_refused(db, monkeypatch):
+    """Changing a rule's stratification re-partitions every stratum.
+
+    The old Pattern rows stay, still carrying items, and their strata stay in
+    their nodes' unlock denominators — where nothing new can ever satisfy them.
+    That is precisely the permanently-unmasterable node `ensure_patterns` exists
+    to prevent, arriving by the back door on the second build rather than the
+    first.
+    """
+    real = frames.rule_stratification
+
+    def shifted():
+        table = dict(real())
+        key = next(iter(table))
+        table[key] = (*table[key], "loc")
+        return table
+
+    monkeypatch.setattr(frames, "rule_stratification", shifted)
+    with pytest.raises(AssertionError, match="stratification"):
+        frames.ensure_patterns(db)
+    db.rollback()
