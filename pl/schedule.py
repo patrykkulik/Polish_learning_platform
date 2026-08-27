@@ -95,7 +95,14 @@ def populations_for(node: Node) -> set[str]:
 
 
 def _new_card(user_id: int, population: str, **ref) -> Card:
-    fresh = FsrsCard()
+    # `due` is passed explicitly rather than left to FsrsCard's default, which
+    # reads the `fsrs` package's own clock. In production the two agree to the
+    # microsecond and it makes no difference; under a simulated clock they are
+    # months apart, and a card whose population goes unscored would keep an
+    # initial due date that the simulation can never reach. One clock, named
+    # here, is the difference between a measuring instrument and a decoration.
+    now = datetime.now(UTC)
+    fresh = FsrsCard(due=now)
     return Card(
         user_id=user_id,
         population=population,
@@ -104,7 +111,7 @@ def _new_card(user_id: int, population: str, **ref) -> Card:
         # Stamped here rather than by the composer: this is the one place a card
         # comes into existence, so it is the only place the day it was introduced
         # can be recorded without the composer and the scheduler disagreeing.
-        created_at=datetime.now(UTC).replace(tzinfo=None),
+        created_at=now.replace(tzinfo=None),
         **ref,
     )
 

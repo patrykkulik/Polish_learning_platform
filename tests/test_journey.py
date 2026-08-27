@@ -979,3 +979,54 @@ def test_a_pattern_card_does_not_test_the_same_word_every_time(db, user):
         f"the stratum served {first.expected_answer!r} twice running, with "
         f"{len(lexemes)} lexemes available to draw from"
     )
+
+
+def _backlog(db, user, size: int) -> None:
+    """Leave exactly `size` cards overdue, defer the rest, and make today new."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cards = list(db.scalars(select(Card).where(Card.user_id == user.id)))
+    assert len(cards) >= size, f"only {len(cards)} cards exist; need {size}"
+    for index, card in enumerate(cards):
+        card.due_at = now - timedelta(hours=1) if index < size else now + timedelta(days=30)
+        # Yesterday's introductions, so today's budget starts unspent.
+        if card.created_at is not None:
+            card.created_at -= timedelta(days=1)
+    db.commit()
+
+
+def test_a_small_backlog_does_not_stop_the_curriculum_opening(db, user):
+    """Criterion 9's bound is a measured number, not a principle.
+
+    "Introduce nothing while anything is overdue" is the stricter-sounding rule
+    and it is the one that stops the course opening. A learner at 85% accuracy is
+    rarely at zero due cards and almost never at zero twice running, so
+    introduction fired roughly one day in four: 123 distinct items and **one**
+    node unlocked over ninety simulated days, averaged over four seeds, with two
+    of six exercise types ever served. At a tolerance of five the same learner
+    reaches 224 items and four nodes on every seed.
+
+    Asserted at the boundary rather than by driving ninety days — that is what
+    `scripts/journey_sim.py` is for, and a test that took ninety days to fail
+    would tell nobody which line broke it.
+    """
+    from pl.session import DEBT_TOLERANCE
+
+    first, _ = build_session(db, user.id, SETTINGS, limit=20)
+    for item in first:
+        answer(db, user, item)
+
+    _backlog(db, user, DEBT_TOLERANCE)
+    _, at_the_bound = build_session(db, user.id, SETTINGS, limit=20)
+    assert at_the_bound["debt_total"] == DEBT_TOLERANCE
+    assert at_the_bound["introduced"] > 0, (
+        f"a backlog of {DEBT_TOLERANCE} — the tolerance itself — stopped "
+        f"introduction; the comparison is off by one"
+    )
+
+    _backlog(db, user, DEBT_TOLERANCE + 1)
+    _, past_the_bound = build_session(db, user.id, SETTINGS, limit=20)
+    assert past_the_bound["debt_total"] == DEBT_TOLERANCE + 1
+    assert past_the_bound["introduced"] == 0, (
+        "the bound does not bind: new material was introduced with a backlog "
+        "past the tolerance, so debt can grow without ever blocking novelty"
+    )

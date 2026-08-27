@@ -43,16 +43,46 @@ from pl.models import Attempt, Card, Form, Item, Lexeme, Node, NodeUnlock
 from pl.schedule import apply_diagnosis
 from pl.session import build_session, evaluate_unlocks
 
-#: Mutated by the day loop; read by `FakeDatetime.now`.
-OFFSET = _dt.timedelta(0)
+#: A fixed point to start from. Arbitrary, but it must be *fixed*: an earlier
+#: version of this file read the real clock and added the simulated day to it,
+#: and that made the whole simulation irreproducible. FSRS grows stability from
+#: the interval actually elapsed, so real microseconds between reviews leak into
+#: card schedules; a node unlock is a cliff, and one card mastering a day earlier
+#: opens a node with hundreds of items behind it. Two runs of the *same*
+#: configuration came back with 209 and 370 items met. A measuring instrument
+#: that disagrees with itself by 80% cannot settle an argument about pacing.
+EPOCH = _dt.datetime(2026, 1, 5, 9, 0, tzinfo=_dt.UTC)
+
+#: The simulated present. Advanced only by `start_day` and `tick`.
+CLOCK = EPOCH
+
+#: How long the learner is taken to spend on one item.
+SECONDS_PER_ITEM = 45
+
+
+def start_day(day: int) -> None:
+    """Begin simulated day `day` (1-based) at the epoch's hour."""
+    global CLOCK
+    CLOCK = EPOCH + _dt.timedelta(days=day - 1)
+
+
+def tick(seconds: int = SECONDS_PER_ITEM) -> None:
+    """Advance the simulated present, as answering an item would."""
+    global CLOCK
+    CLOCK += _dt.timedelta(seconds=seconds)
 
 
 class FakeDatetime(_dt.datetime):
-    """`datetime` with the simulated day added to every `now()`."""
+    """`datetime` whose `now()` is the simulated present, not the real one.
+
+    Subclasses `datetime` rather than standing in for it, because the modules
+    under test also use `datetime.combine`, `datetime.min` and
+    `datetime.fromisoformat`, and those must keep working.
+    """
 
     @classmethod
     def now(cls, tz=None):
-        return _dt.datetime.now(tz) + OFFSET
+        return CLOCK.astimezone(tz) if tz is not None else CLOCK.replace(tzinfo=None)
 
 
 _session.datetime = FakeDatetime
@@ -93,6 +123,14 @@ def simulate(days: int, limit: int, accuracy: float, seed: int = 7) -> list[dict
 
     settings = {"tz": "UTC", "daily_goal_items": limit}
     rng = random.Random(seed)
+    # FSRS applies a few percent of random "fuzz" to every interval it computes,
+    # deliberately, to stop reviews piling onto one day — and it draws that from
+    # the *global* RNG. Seeding it keeps production's real behaviour (fuzz stays
+    # on) while making the run reproducible. Left unseeded, two runs of the same
+    # configuration disagreed by 80% on how much of the curriculum was reached,
+    # because a fuzzed interval can flip a card's mastery day and a node unlock
+    # is a cliff with hundreds of items behind it.
+    random.seed(seed)
     form_lexeme = {f.id: f.lexeme_id for f in db.scalars(select(Form))}
 
     seen: set[int] = set()
@@ -100,12 +138,15 @@ def simulate(days: int, limit: int, accuracy: float, seed: int = 7) -> list[dict
     by_type: Counter = Counter()
     rows: list[dict] = []
 
-    global OFFSET
     for day in range(1, days + 1):
-        OFFSET = _dt.timedelta(days=day - 1)
+        start_day(day)
 
         picked, stats = build_session(db, user.id, settings, limit=limit)
         for item in picked:
+            # Answering takes time, and FSRS reads that time. Advancing the
+            # simulated clock per item is what keeps within-session intervals
+            # realistic *and* identical from run to run.
+            tick()
             seen.add(item.id)
             by_type[item.exercise_type] += 1
             if item.target_form_id in form_lexeme:

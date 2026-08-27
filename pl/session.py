@@ -1,9 +1,13 @@
 """Session composition and the node unlock gate.
 
 The learner is served **debt, then remediation, then new**, and nothing new is
-introduced while anything is overdue. That ordering is what makes the streak mean
+introduced while the backlog is deep. That ordering is what makes the streak mean
 retention rather than novelty: a learner with forty due cards cannot bank a day
 by starting a fresh lesson.
+
+"Deep" rather than "non-empty" — see `DEBT_TOLERANCE`. Demanding a completely
+clear queue reads as the stricter, more honest rule, and measured over ninety
+days it stops the curriculum opening at all.
 
 The segments are *composed* in a different order — debt, new, remediation — and
 `build_session` explains why. In short: remediation wants the whole session and
@@ -53,6 +57,24 @@ MASTERY_MIN_SPAN_DAYS = 7
 #: New cards introduced per day. Without a cap, one enthusiastic evening creates
 #: a debt spike three days later that reads as punishment for engagement.
 DAILY_NEW_CAP = 10
+
+#: Criterion 9's bound: how much debt may remain and still admit new material.
+#:
+#: Zero is the criterion as originally written — introduce only on a day that
+#: starts completely clear — and measurement is what argued it down. A learner at
+#: 85% accuracy is rarely at zero and almost never at zero on consecutive days,
+#: so introduction fired about one day in four: 123 distinct items and **one**
+#: node unlocked over ninety simulated days, averaged across four seeds, with
+#: only two of the six exercise types ever served.
+#:
+#: At five, the same learner reaches 224 items and four nodes on every seed, and
+#: meets four exercise types. Five rather than ten because ten lets the backlog
+#: reach 27 against a twenty-item session — more than one sitting can clear, and
+#: criterion 12 makes clearing it the condition for the streak. A bound that
+#: quietly puts the streak out of reach is not a kindness.
+#:
+#: Re-measure with `scripts/journey_sim.py` before moving this.
+DEBT_TOLERANCE = 5
 #: Total session length is deliberately **not** capped at M1 — see the design's
 #: Optional hardening. Path A has one learner who can simply stop.
 
@@ -529,10 +551,10 @@ def build_session(
     debt_total = len(due)
     debt_served = len(debt_items)
 
-    # 2 — new, and only while nothing is overdue. Claims its room before
-    # remediation is allowed to ask for any.
+    # 2 — new, while the backlog is small enough to bear it. Claims its room
+    # before remediation is allowed to ask for any.
     introduced = 0
-    if not due:
+    if len(due) <= DEBT_TOLERANCE:
         budget = _introduction_budget(db, user_id, settings)
         started = _started_referents(db, user_id)
         sense_by_form = _sense_by_form(db)

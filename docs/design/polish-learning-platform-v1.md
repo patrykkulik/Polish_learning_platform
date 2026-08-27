@@ -1002,14 +1002,19 @@ Three longitudinal tests were green throughout, because all of them answer *corr
 the error table empty, `weakest_node` returning `None`, and the defective segment never executing at
 all. A test that cannot fail is not evidence.
 
+**And the instrument needed its own audit before it could settle anything.** The first version of
+`journey_sim.py` read the real clock and added the simulated day to it, and left FSRS's interval
+fuzzing drawing on the *global* RNG. Both leak real, load-dependent timing into card schedules; a
+node unlock is a cliff with hundreds of items behind it, so one card mastering a day earlier cascades.
+Two runs of the *same* configuration came back with 209 and 370 items met — and on the strength of the
+first, broken sweep, a floor-based bound looked like the winner. It is not; it is the one mechanism of
+the three whose outcome depends on the seed. The fixes were a fixed epoch advanced per answered item,
+a seeded global RNG, and `_new_card` passing FSRS an explicit `due` instead of letting the library
+consult a clock of its own. **A measuring instrument that disagrees with itself does not merely fail
+to settle an argument — it will confidently settle it the wrong way.**
+
 **Would stop a real learner**
 
-- **Introduction is gated on a clear debt queue, and that is now the binding constraint.** With
-  remediation fixed, new material arrives only on days that start with nothing overdue: one node
-  unlocked in sixty simulated days, ~8% of the item bank met. This is criterion 9 working exactly as
-  specified, which is what makes it a design decision rather than a bug. Criterion 9 needs a bound (a
-  debt threshold, or a floor of new items that outranks it), and choosing one is a decision about
-  what the product is for. Measure with `scripts/journey_sim.py` before changing it, and again after.
 - **Listening-dictation items are unreachable.** All 26 exist, are built, are audible and grade
   correctly, and are never offered. Each shares both of its referents with the cloze built from the
   same sentence, and debt serves the lowest-id item, which is always the cloze. Pinned by
@@ -1018,6 +1023,22 @@ all. A test that cannot fail is not evidence.
 
 **Fixed at this revision**
 
+- ~~Criterion 9 needs a bound, and choosing one is a product decision.~~ **Chosen, on evidence.**
+  `DEBT_TOLERANCE = 5`: new material is admitted while at most five cards are overdue, rather than
+  only on a completely clear day. Over ninety simulated days, averaged across four seeds:
+
+  | bound | items met | nodes unlocked | exercise types | peak backlog |
+  |---|---:|---:|---:|---:|
+  | overdue = 0 (criterion 9 as written) | 123 | 1 | 2 of 6 | 22 |
+  | **overdue ≤ 5** | **224** | **4** | **4 of 6** | 20 |
+  | overdue ≤ 10 | 236 | 4 | 4 of 6 | 27 |
+
+  Ten is not chosen despite reaching marginally further, because it lets the backlog reach 27 against
+  a twenty-item session — more than one sitting can clear, and criterion 12 makes clearing it the
+  condition for the streak. A bound that quietly puts the streak out of reach is a worse bargain than
+  a few items of coverage. A third mechanism was measured and rejected: guaranteeing a floor of new
+  cards on a day that starts in debt reached comparable coverage but unlocked one node on two seeds
+  of four and four on the others, and a pacing rule whose outcome depends on the seed is not a rule.
 - ~~`DAILY_NEW_CAP` is enforced per *call*, not per day.~~ `card.created_at` now records the day a
   referent was introduced and the budget is read from it, so the "Another round" button no longer
   grants another ten. The cap counts **cards**, the unit it is named for: the first item of a stratum

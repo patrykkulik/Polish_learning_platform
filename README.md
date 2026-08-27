@@ -66,20 +66,35 @@ pinned by `test_remediation_does_not_starve_new_material`.
 That explanation was written before anyone simulated it and was wrong: debt was
 clear on most of those days.*
 
-What remains is pacing rather than a defect. Criterion 9 forbids introducing
-anything while a review is overdue, so new material arrives only on days that
-start clear — about 80 distinct items, 58 of 76 lexemes and one node unlocked
-over sixty days at 85% accuracy:
+**Criterion 9 has a bound, and the bound is a measured number.** "Introduce
+nothing while anything is overdue" is the stricter-sounding rule and it was the
+next thing stopping the course opening: a learner at 85% accuracy is rarely at
+zero due cards and almost never at zero twice running, so introduction fired
+about one day in four. `pl.session.DEBT_TOLERANCE` is what the measurement
+bought — over ninety simulated days, averaged across four seeds:
+
+| bound | distinct items | nodes unlocked | exercise types | peak backlog |
+|---|---:|---:|---:|---:|
+| overdue = 0 (as written) | 123 | 1 | 2 of 6 | 22 |
+| **overdue ≤ 5** | **224** | **4** | **4 of 6** | 20 |
+| overdue ≤ 10 | 236 | 4 | 4 of 6 | 27 |
+
+Five rather than ten because ten lets the backlog reach 27 against a twenty-item
+session — more than one sitting can clear, and criterion 12 makes clearing it the
+condition for the streak.
 
 ```bash
-uv run python scripts/journey_sim.py 60 20 0.85
+uv run python scripts/journey_sim.py 90 20 0.85
 ```
 
-Criterion 9 needs a bound (a debt threshold, or a floor of new items that
-outranks it), and that is a decision about what the product is for rather than a
-patch. Run the simulation before changing it, and again afterwards. Its totals
-move by a percent or two between runs — FSRS reads the real clock within each
-simulated day — so treat them as a scale, not a fingerprint.
+The simulation is deterministic: same arguments, same numbers, whatever else the
+machine is doing. That took two fixes and is worth knowing about, because without
+them it disagreed with itself by 80% and briefly argued for the wrong bound —
+FSRS fuzzes every interval from the *global* RNG, and it reads the real clock
+unless you hand it one.
+
+Still not fixed by any of this: the learner meets 58 of 76 lexemes and stops. The
+remaining 18 are verbs behind nodes that need more mastery than ninety days buys.
 
 Still unreachable: all 26 listening-dictation items. Each shares both referents
 with the cloze built from the same sentence, and the queue serves the lower id,
