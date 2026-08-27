@@ -102,6 +102,20 @@ def _let_time_pass(db, days: int = 1):
     db.commit()
 
 
+@pytest.fixture(autouse=True)
+def _repeatable_fsrs_fuzz():
+    """FSRS jitters every interval it computes, drawing on the *global* RNG.
+
+    Left unseeded, a longitudinal test's outcome depends on how much randomness
+    the tests that ran before it happened to consume — so the same test passes
+    on its own and fails in a full run, or the other way round, and neither
+    result means anything. Seeding costs nothing, keeps the fuzz switched on so
+    the behaviour under test is production's, and removes an entire class of
+    order-dependent flake.
+    """
+    random.seed(20260827)
+
+
 @pytest.fixture
 def user(db):
     return ingest.ensure_user(db)
@@ -754,19 +768,26 @@ def test_no_dictation_is_offered_without_a_synthesiser(db, monkeypatch):
     assert offerable(cloze), "a written item must be unaffected"
 
 
-def test_listening_items_are_currently_unreachable(db, user, monkeypatch):
-    """Records a live defect so it is not rediscovered as a surprise.
+def test_every_exercise_type_built_is_a_type_the_learner_can_meet(db, user, monkeypatch):
+    """Replaces `test_listening_items_are_currently_unreachable`.
 
-    52 dictation items are built and none can ever be served. Introduction skips
-    them because they share both referents with the cloze from the same
-    sentence; debt serves the lowest-id item for a due form, which is that
-    cloze. This test asserts the *current* behaviour — when dictation is made
-    reachable it will fail, and that failure is the signal to delete it.
+    26 dictation items, 131 free translations and 58 prep drills were built,
+    graded correctly, and never served. Not by any rule anyone chose: a card is
+    shared by every exercise built on the same form or stratum, the draw offered
+    whichever had the lowest id, and ids follow build order — every sentence's
+    cloze is generated before its dictation. **Build order was silently deciding
+    the curriculum.**
+
+    The test this replaces asserted the defect and was written to be deleted on
+    the day it broke. It never broke, and that is the more useful lesson: it
+    deferred every card before each session, so it never built a backlog, and the
+    debt queue is the only segment that can offer a *second* exercise for a form
+    the learner already knows. It was asserting the defect through the one path
+    that could not have shown the fix.
     """
     from datetime import datetime as dt
 
     from pl import audio
-    from pl.domain import AUDIBLE
     from pl.models import NodeUnlock
 
     monkeypatch.setattr(audio, "available", lambda: True)
@@ -780,17 +801,19 @@ def test_listening_items_are_currently_unreachable(db, user, monkeypatch):
         )
     db.commit()
 
-    offered = 0
-    for _ in range(12):
+    rng = random.Random(5)
+    met: set[str] = set()
+    for _ in range(40):
         picked, _ = build_session(db, user.id, SETTINGS, limit=20)
-        offered += sum(1 for i in picked if i.exercise_type in AUDIBLE)
         for item in picked:
-            answer(db, user, item)
-        _defer_everything(db)
+            met.add(item.exercise_type)
+            correct = rng.random() < 0.85
+            answer(db, user, item, None if correct else _wrong_form(db, item, rng))
+        advance_one_day(db)
 
-    assert offered == 0, (
-        "listening items are now reachable — delete this test and assert the "
-        "behaviour you want instead"
+    built = set(db.scalars(select(Item.exercise_type).distinct()))
+    assert built - met == set(), (
+        f"built but never offered in forty days: {sorted(built - met)}"
     )
 
 
@@ -1029,4 +1052,39 @@ def test_a_small_backlog_does_not_stop_the_curriculum_opening(db, user):
     assert past_the_bound["introduced"] == 0, (
         "the bound does not bind: new material was introduced with a backlog "
         "past the tolerance, so debt can grow without ever blocking novelty"
+    )
+
+
+def test_an_untouched_stratum_does_not_always_offer_the_same_exercise(db, user):
+    """Practice count cannot separate items the learner has never met.
+
+    Everything unmet ties at zero and falls through to the id — and ids follow
+    build order, where every sentence's cloze is generated before its dictation
+    and every stratum's cloze items before its prep drills. A pattern card with
+    eighty untouched candidates therefore offered the same cloze at every review,
+    which is how 26 dictation items, 131 free translations and 58 prep drills
+    came to be unreachable by construction rather than by any rule.
+
+    Measured over ninety simulated days: without the rotation the learner meets
+    three of six exercise types and no listening item at all; with it, five.
+    """
+    from pl import schedule
+    from pl.schedule import PATTERN
+    from pl.session import _items_for_card
+
+    pattern, items, lexemes = _stratum_with_several_lexemes(db)
+    assert len(items) > 2, "too small a stratum to prove anything"
+    card = schedule.card_for(db, user.id, PATTERN, pattern.id)
+    db.commit()
+
+    # Nothing has been answered, so practice count separates none of them.
+    offered = set()
+    for reps in range(6):
+        card.reps = reps
+        db.commit()
+        offered.add(_items_for_card(db, card, lexemes)[0].id)
+
+    assert len(offered) > 1, (
+        "the stratum offered the same item at every review count — the draw is "
+        "pinned to build order, and whatever was generated first wins forever"
     )

@@ -324,8 +324,10 @@ def known_lexemes(db: Session, user_id: int) -> set[int]:
     return known
 
 
-def _least_practised_first(db: Session, user_id: int, items: list[Item]) -> list[Item]:
-    """Rotate a stratum's draw instead of serving its lowest id forever.
+def _least_practised_first(
+    db: Session, user_id: int, items: list[Item], rotate: int = 0
+) -> list[Item]:
+    """Least-practised first, and among equals a different one each time.
 
     A stratum holds roughly one item per lexeme in it. An unordered select
     returns them in insertion order and the debt loop takes the first offerable
@@ -333,9 +335,19 @@ def _least_practised_first(db: Session, user_id: int, items: list[Item]) -> list
     life of the account: the card claims generalisation across its stratum and
     measures a single word.
 
-    Ordered by how often the learner has actually answered each item, so the
-    draw rotates on its own without a random seed — which keeps the composer
-    deterministic and therefore testable.
+    Practice count alone does not fix that, and the reason is worth recording.
+    It only separates items the learner has *already met*; everything unmet ties
+    at zero and falls through to the id, and ids follow build order — every
+    sentence's cloze is built before its dictation, and every stratum's cloze
+    items before its prep drills. A pattern card with eighty untouched
+    candidates therefore served the same cloze forever, and 26 dictation items,
+    131 free translations and 58 prep drills were unreachable *by construction*
+    rather than by any rule anyone wrote down.
+
+    `rotate` is the card's own review count, so the starting point among equals
+    advances each time the card comes round. Deterministic — no seed, so the
+    composer stays testable — but no longer a fixed preference for whatever was
+    generated first.
     """
     if len(items) < 2:
         return items
@@ -349,7 +361,14 @@ def _least_practised_first(db: Session, user_id: int, items: list[Item]) -> list
             .group_by(Attempt.item_id)
         ).all()
     )
-    return sorted(items, key=lambda i: (counts.get(i.id, 0), i.id))
+    ordered = sorted(items, key=lambda i: (counts.get(i.id, 0), i.id))
+    fewest = counts.get(ordered[0].id, 0)
+    equals = [i for i in ordered if counts.get(i.id, 0) == fewest]
+    rest = [i for i in ordered if counts.get(i.id, 0) != fewest]
+    if rotate and len(equals) > 1:
+        offset = rotate % len(equals)
+        equals = equals[offset:] + equals[:offset]
+    return equals + rest
 
 
 def _items_for_card(
@@ -362,14 +381,15 @@ def _items_for_card(
     want.
     """
     if card.population == MORPH:
-        stmt = select(Item).where(Item.target_form_id == card.form_id)
+        items = list(
+            db.scalars(select(Item).where(Item.target_form_id == card.form_id))
+        )
     elif card.population == PATTERN:
         items = list(db.scalars(select(Item).where(Item.pattern_id == card.pattern_id)))
         if known is not None:
+            # An empty intersection means the card is not scheduled at all, which
+            # is what the design asks for: there is nothing honest to test it on.
             items = [i for i in items if _lexeme_of_item(db, i) in known]
-        # An empty intersection means the card is not scheduled at all, which is
-        # what the design asks for: there is nothing honest to test it on yet.
-        return _least_practised_first(db, card.user_id, items)
     else:
         sense = db.get(Sense, card.sense_id)
         stmt = (
@@ -377,12 +397,16 @@ def _items_for_card(
             .join(Node, Node.id == Item.node_id)
             .where(Node.type == "vocabulary", Item.pattern_id.is_(None))
         )
-        return [
+        items = [
             i
             for i in db.scalars(stmt)
             if _lexeme_of_item(db, i) == sense.lexeme_id
         ]
-    return list(db.scalars(stmt))
+    # Ordered for every population, not just pattern cards. A form card is shared
+    # by every exercise built on that form — the cloze, the dictation, the whole
+    # sentence — and serving whichever has the lowest id means the learner meets
+    # one of them and never the others, however many were built.
+    return _least_practised_first(db, card.user_id, items, rotate=card.reps)
 
 
 def _lexeme_of_item(db: Session, item: Item) -> int | None:
@@ -567,6 +591,17 @@ def build_session(
             for node in db.scalars(select(Node))
             if is_unlocked(db, user_id, node)
         ]
+        # Start the round-robin somewhere new each time. Round-robin alone is not
+        # enough to be fair: every round begins at the first node, and a budget of
+        # ten cards is spent by the sixth or seventh, so nodes late in the list
+        # are never reached at all. N12's aspect items sat unoffered for forty
+        # simulated days for exactly this reason — not because anything blocked
+        # them, but because `node.id` decided who ate first. Offset by how much
+        # the learner already holds, so it advances with them and stays
+        # deterministic.
+        if pools:
+            offset = len(started) % len(pools)
+            pools = pools[offset:] + pools[:offset]
         while pools and introduced < budget and total() < limit:
             progressed = False
             for entry in list(pools):

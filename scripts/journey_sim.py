@@ -112,8 +112,16 @@ def wrong_answer(db, item: Item, rng: random.Random) -> str:
     return "xxx"
 
 
-def simulate(days: int, limit: int, accuracy: float, seed: int = 7) -> list[dict]:
-    """Run the loop for `days`, answering correctly `accuracy` of the time."""
+def simulate(
+    days: int, limit: int, accuracy: float, seed: int = 7, inspect=None
+) -> list[dict]:
+    """Run the loop for `days`, answering correctly `accuracy` of the time.
+
+    `inspect`, if given, is called with `(db, user)` once the last day is over
+    and before the session closes — for asking the finished world questions the
+    per-day rows cannot answer, such as *which* mastery condition is holding a
+    node shut.
+    """
     engine = create_engine("sqlite://", future=True)
     models.Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False, future=True)()
@@ -200,6 +208,8 @@ def simulate(days: int, limit: int, accuracy: float, seed: int = 7) -> list[dict
         "nodes": db.scalar(select(func.count()).select_from(Node)),
         "by_type": dict(by_type),
     }
+    if inspect is not None:
+        inspect(db, user)
     db.close()
     return rows, totals
 

@@ -1015,13 +1015,50 @@ to settle an argument — it will confidently settle it the wrong way.**
 
 **Would stop a real learner**
 
-- **Listening-dictation items are unreachable.** All 26 exist, are built, are audible and grade
-  correctly, and are never offered. Each shares both of its referents with the cloze built from the
-  same sentence, and debt serves the lowest-id item, which is always the cloze. Pinned by
-  `test_listening_items_are_currently_unreachable`, which is written to be deleted by whoever makes
-  them reachable.
+- **The critical path runs through a single-stratum node, and its gate is all-or-nothing.** With
+  criterion 9 bounded, ninety simulated days open five nodes of thirteen. The remaining eight —
+  319 items, and *every* prep-drill, aspect-choice and free-translation item in the course — sit
+  behind `N06`, which needs `N02` and `N05`; `N05` needs `N03` and `N04`. **`N03` carries one
+  stratum.** `MASTERY_FRACTION` of 0.8 over a single stratum rounds to one of one, so a node on the
+  critical path demands 100% where the design intends 80%, with no tolerance for a single lapse.
+  §"Pattern cards are stratified" anticipated exactly this — *"under one-card-per-rule the threshold
+  was 80% of 1"* — and the M1 lexeme set reintroduced it by accident, because 58 nouns yield only one
+  feminine-accusative paradigm class.
 
+  **The thresholds are not the fix, and that was measured rather than assumed.** Every started card
+  already clears `MASTERY_MIN_REVIEWS` and `MASTERY_MIN_SPAN_DAYS`; the gate is bound entirely by
+  `stability_max`. Dropping it from 7 days to 5, or `MASTERY_FRACTION` from 0.8 to 0.7, buys one
+  extra node on one seed of two and nothing on the other; dropping stability to 3 makes the outcome
+  *worse*, serving three exercise types where the shipped configuration serves four. A hypothesis
+  that remediation was suppressing stability growth by reviewing cards early was also tested and is
+  false: disabling remediation entirely leaves the same four nodes open, with fewer items met and
+  *lower* mean stability. **The fix is more lexemes, so that thin rules acquire a second stratum.**
 **Fixed at this revision**
+
+- ~~Listening-dictation items are unreachable.~~ **And the cause was larger than dictation.** 26
+  dictation items, 131 free translations and 58 prep drills were built, audible, correctly graded —
+  and never served. A card is shared by every exercise built on the same form or stratum; the draw
+  offered whichever had the lowest id; and ids follow build order, in which every sentence's cloze is
+  generated before its dictation. **Build order was silently choosing the curriculum.** Two changes
+  fix it, and both were measured:
+  - the draw is ordered least-practised-first for *every* population, not only pattern cards; and
+    among items the learner has met equally often — which at first is all of them — it starts from a
+    different one each review, offset by the card's own `reps`. Practice count alone is not enough:
+    it separates only what has already been met, and everything unmet ties at zero and falls back to
+    the id. Over ninety simulated days the rotation is the difference between three exercise types
+    reaching the learner and five.
+  - the introduction round-robin starts at a different node each session. Round-robin alone is not
+    fair: every round began at the first node and a ten-card budget is spent by the sixth or seventh,
+    so `N12`'s aspect items went unoffered for forty simulated days — not blocked by anything, merely
+    last in `node.id` order.
+
+  Together these take a ninety-day learner from 262 distinct items to 474, and from two exercise
+  types to five. `test_every_exercise_type_built_is_a_type_the_learner_can_meet` replaces
+  `test_listening_items_are_currently_unreachable`, which asserted the defect and was written to be
+  deleted the day it broke. **It never broke.** It deferred every card before each session, so it
+  never built a backlog — and the debt queue is the only segment that can offer a *second* exercise
+  for a form the learner already knows. It was asserting the defect through the one path incapable of
+  showing the fix, which is worth more as a lesson than the defect it recorded.
 
 - ~~Criterion 9 needs a bound, and choosing one is a product decision.~~ **Chosen, on evidence.**
   `DEBT_TOLERANCE = 5`: new material is admitted while at most five cards are overdue, rather than

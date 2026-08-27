@@ -96,9 +96,20 @@ unless you hand it one.
 Still not fixed by any of this: the learner meets 58 of 76 lexemes and stops. The
 remaining 18 are verbs behind nodes that need more mastery than ninety days buys.
 
-Still unreachable: all 26 listening-dictation items. Each shares both referents
-with the cloze built from the same sentence, and the queue serves the lower id,
-which is always the cloze. Design doc §"Known defects" has the full list.
+**Build order was choosing the curriculum.** 26 listening-dictation items, 131
+free translations and 58 prep drills were built, graded correctly, and never
+served — a card is shared by every exercise built on the same form or stratum,
+the draw offered whichever had the lowest id, and ids follow build order, where
+every sentence's cloze is generated before its dictation. Fixed by ordering the
+draw least-practised-first for every population and rotating among equals, and by
+starting the introduction round-robin at a different node each session (a ten-card
+budget is spent by the sixth node, so `N12` was never reached). A ninety-day
+learner goes from 262 distinct items and two exercise types to 474 and five.
+
+What is left is content, not composition: the learner still meets 58 of 76
+lexemes and opens 5 nodes of 13, because the critical path runs through a node
+with a single stratum whose gate is therefore all-or-nothing. Design doc
+§"Known defects" has the measurements.
 
 ## Quick start
 
