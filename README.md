@@ -106,10 +106,15 @@ starting the introduction round-robin at a different node each session (a ten-ca
 budget is spent by the sixth node, so `N12` was never reached). A ninety-day
 learner goes from 262 distinct items and two exercise types to 474 and five.
 
-What is left is content, not composition: the learner still meets 58 of 76
-lexemes and opens 5 nodes of 13, because the critical path runs through a node
-with a single stratum whose gate is therefore all-or-nothing. Design doc
-§"Known defects" has the measurements.
+What is left is not composition and not content — it is the gate's arithmetic.
+The learner opens 5 nodes of 13, because `mastered / strata >= 0.8` grants no
+tolerance at all below five strata, and the whole critical path between N01 and
+N06 is narrow: N03 has one stratum, N04 three, N05 four. For those, "80% of the
+node's pattern cards" means 100%, and one lapse is enough. Polish does not offer
+five distinct feminine accusative classes, so N03 cannot be widened out of it by
+any amount of vocabulary. Whether to give the gate an explicit tolerance is a
+decision about what mastery means; design doc §"Known defects" has the
+measurements and does not make it.
 
 ## Quick start
 

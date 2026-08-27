@@ -1025,14 +1025,45 @@ to settle an argument — it will confidently settle it the wrong way.**
   was 80% of 1"* — and the M1 lexeme set reintroduced it by accident, because 58 nouns yield only one
   feminine-accusative paradigm class.
 
-  **The thresholds are not the fix, and that was measured rather than assumed.** Every started card
-  already clears `MASTERY_MIN_REVIEWS` and `MASTERY_MIN_SPAN_DAYS`; the gate is bound entirely by
-  `stability_max`. Dropping it from 7 days to 5, or `MASTERY_FRACTION` from 0.8 to 0.7, buys one
+  **`MASTERY_FRACTION` has no effect below five strata, and that is arithmetic rather than opinion.**
+  The gate is `mastered / strata >= 0.8`, so:
+
+  | strata | must master | tolerance |
+  |---:|---:|---:|
+  | 1 | 1 | **0** |
+  | 2 | 2 | **0** |
+  | 3 | 3 | **0** |
+  | 4 | 4 | **0** |
+  | 5 | 4 | 1 |
+  | 8 | 7 | 1 |
+  | 28 | 23 | 5 |
+
+  Four of the eleven grammar nodes carry fewer than five strata — `N03` (1), `N04` (3), `N05` (4) and
+  `N09` (3) — so for them "80% of the node's pattern cards" means **100%, with no tolerance for a
+  single lapse**. `N03`, `N04` and `N05` are the entire critical path between `N01` and `N06`. The
+  design's claim that stratification "is what makes 80% a meaningful fraction" holds only for the
+  wide nodes; on the narrow ones the fraction rounds away to nothing.
+
+  **More lexemes will not fix this, and the first draft of this entry said they would.** Taking `N03`
+  from one stratum to two moves its gate from 1-of-1 to 2-of-2 — still 100%, and strictly harder. All
+  twenty feminine nouns in the set share the paradigm class `f:acc-ę|nom-a`; adding the consonant-
+  final feminines (`noc`, `sól`, `wieś`, where the accusative equals the nominative) would add the
+  one genuinely missing contrast and a real learner trap, but Polish does not offer five distinct
+  feminine accusative classes, so `N03` cannot reach tolerance by any amount of vocabulary. **It is a
+  100% gate permanently, by the shape of the language.**
+
+  **The thresholds are not the fix either, and that was measured rather than assumed.** Every started
+  card already clears `MASTERY_MIN_REVIEWS` and `MASTERY_MIN_SPAN_DAYS`; the gate is bound entirely
+  by `stability_max`. Dropping it from 7 days to 5, or `MASTERY_FRACTION` from 0.8 to 0.7, buys one
   extra node on one seed of two and nothing on the other; dropping stability to 3 makes the outcome
   *worse*, serving three exercise types where the shipped configuration serves four. A hypothesis
   that remediation was suppressing stability growth by reviewing cards early was also tested and is
   false: disabling remediation entirely leaves the same four nodes open, with fewer items met and
-  *lower* mean stability. **The fix is more lexemes, so that thin rules acquire a second stratum.**
+  *lower* mean stability.
+
+  **What is left is a decision, not a patch:** either accept that narrow rules are all-or-nothing, or
+  give the gate an explicit tolerance that does not depend on the stratum count (`mastered >= n - 1`
+  once `n > 1`, say). That changes what mastery *means*, so it is not made here.
 **Fixed at this revision**
 
 - ~~Listening-dictation items are unreachable.~~ **And the cause was larger than dictation.** 26
