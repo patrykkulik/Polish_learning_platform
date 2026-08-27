@@ -51,7 +51,8 @@
   theme: city
 - lemma: praca
   gloss: work
-  theme: venue
+  # "Idę do pracy" and "Mam pracę" are both ordinary
+  themes: [venue, abstract]
 - lemma: matka
   gloss: mother
   theme: people
@@ -67,10 +68,12 @@
   theme: venue
 - lemma: dom
   gloss: house
-  theme: venue
+  # a place you go to and a home you own
+  themes: [venue, home]
 - lemma: ogród
   gloss: garden
-  theme: venue
+  # likewise
+  themes: [venue, home]
 - lemma: stół
   gloss: table
   theme: home
@@ -88,10 +91,12 @@
   theme: objects
 - lemma: rower
   gloss: bicycle
-  theme: city
+  # a thing you own and ride, not a place
+  themes: [city, objects]
 - lemma: samochód
   gloss: car
-  theme: city
+  # likewise
+  themes: [city, objects]
 - lemma: chleb
   gloss: bread
   theme: food
@@ -137,7 +142,8 @@
   theme: home
 - lemma: mieszkanie
   gloss: flat
-  theme: venue
+  # likewise
+  themes: [venue, home]
 - lemma: miasto:S
   gloss: city
   theme: venue

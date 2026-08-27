@@ -8,6 +8,45 @@
 # `rule_key` plus the lexeme's derived paradigm_class resolves the pattern, and
 # the pattern carries the node — so a frame does not name a node and does not
 # need to know that the accusative splits three ways.
+#
+# ---------------------------------------------------------------------------
+# `themes` keeps a frame off lexemes it would be nonsense with. Two rules govern
+# its use here, and the second is a correctness requirement rather than taste.
+#
+# 1. Gate anything that reads as absurd. `Kupuję szkołę` ("I am buying the
+#    school") inflects perfectly and teaches the learner to stop reading. This
+#    matters more the larger the lexeme set gets: an ungated frame produces one
+#    bad sentence per unsuitable noun, so nonsense scales exactly as fast as
+#    vocabulary does.
+#
+# 2. **A rule that applies to every noun must keep one ungated frame.** Not to
+#    avoid empty strata — gating cannot produce one. Strata are derived from the
+#    frames that populate them, so a gated frame removes its stratum rather than
+#    emptying it, and *that* is the danger: the node goes on building cleanly
+#    while teaching fewer paradigm classes than the lexeme set contains, and
+#    nothing anywhere reports it. `Verified:` gating every accusative frame to
+#    `people` takes N04 from three strata to two and N05 from four to two, with
+#    a successful build and a green stratum-coverage test.
+#
+#    So each universal rule keeps the one frame that genuinely fits any noun —
+#    you can name, point at, like, lack or think about anything:
+#
+#      NOM_SG          NOM_CITATION     GEN_NEGATION     GEN_NIE_MA
+#      NOM_PREDICATE   TO_JEST          LOC_PREPOSITION  LOC_O
+#      ACC_AFTER_...   LUBIE
+#
+#    `test_the_universal_rules_still_reach_every_noun` is the guard. Rules that
+#    are *not* universal — INST, GEN_POSSESSION, GEN_PREPOSITION — are wholly
+#    theme-scoped on purpose: "Idę do ___" is a sentence about venues, and a
+#    stratum it never reaches is a stratum that rule was never teaching.
+#
+# Themes are coarse, and coarse is the point — a curriculum author's tool, not a
+# semantic model. A lexeme may carry several when it honestly belongs to several
+# (`dom` is a venue you go to *and* a home you own); that is what keeps the gates
+# from costing good sentences to exclude bad ones. Where a theme still mixes
+# cases the frame excludes the whole theme and loses the good with the bad, which
+# is the trade to revisit first if the sentences start reading thin.
+# ---------------------------------------------------------------------------
 
 # N01's competency is the citation form and the gender that comes with it. The
 # nominative singular *is* the dictionary form, so there is no inflection to
@@ -35,6 +74,8 @@
   gloss: "Here is the {gloss}."
   case: nom
   rule_key: NOM_PREDICATE
+  # Locatable things. "Tu jest czas" is not a place to be.
+  themes: [food, objects, home, clothes, venue, city, people, animals, nature]
 
 - key: WIDZE
   exercise_type: cloze
@@ -42,6 +83,8 @@
   gloss: "I see the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # Visible things. You cannot see "czas" or "historia".
+  themes: [food, objects, home, clothes, venue, city, people, animals, nature]
 
 - key: MAM
   exercise_type: cloze
@@ -49,6 +92,8 @@
   gloss: "I have the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # Ownable. Excludes venue: "Mam dom" is fine but "Mam kino" is not.
+  themes: [food, objects, home, clothes, animals, people, abstract]
 
 - key: LUBIE
   exercise_type: cloze
@@ -63,6 +108,8 @@
   gloss: "I am buying the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # Purchasable, and narrowly so.
+  themes: [food, objects, home, clothes, animals]
 
 # The preposition drill. `czekać na` governs the accusative regardless of what
 # follows it, which makes it the cleanest vehicle in the M1 vocabulary for
@@ -73,6 +120,8 @@
   gloss: "I am waiting for the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # You wait for people, animals, an order, an event.
+  themes: [people, animals, food, abstract]
 
 # Multiple choice over forms: low-stakes first exposure to a stratum. Distractors
 # are other real cells of the same lexeme, so a learner who guesses by shape
@@ -84,6 +133,8 @@
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   distractor_cases: [nom, gen, loc]
+  # Same template as WIDZE, so the same gate.
+  themes: [food, objects, home, clothes, venue, city, people, animals, nature]
 
 # Multiple choice over meaning. Sits under the vocabulary node, so it scores the
 # lexical card — the only vehicle at M1 that tests knowing the word rather than
@@ -130,6 +181,8 @@
   gloss: "I do not have the {gloss}."
   case: gen
   rule_key: GEN_NEGATION
+  # The negation of MAM, so the same gate.
+  themes: [food, objects, home, clothes, animals, people, abstract]
 
 - key: GEN_NIE_MA
   exercise_type: cloze
@@ -211,6 +264,8 @@
   gloss: "Say in Polish: I see the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # Same sentence as WIDZE.
+  themes: [food, objects, home, clothes, venue, city, people, animals, nature]
 
 - key: FREE_MAM
   exercise_type: free_translation
@@ -219,6 +274,8 @@
   gloss: "Say in Polish: I have the {gloss}."
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # Same sentence as MAM.
+  themes: [food, objects, home, clothes, animals, people, abstract]
 
 - key: FREE_IDE_DO
   exercise_type: free_translation

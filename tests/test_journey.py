@@ -1164,3 +1164,84 @@ def test_a_rule_card_advances_once_a_day_however_often_its_rule_comes_up(db, use
     # Cards that are *not* shared still move once each.
     forms = {i.target_form_id for i in drilled}
     assert len(forms) > 1, "these items share a form, so they prove nothing"
+
+
+def test_the_universal_rules_still_reach_every_noun(db):
+    """Theme gating narrows the curriculum; it does not leave holes in it.
+
+    A rule's strata are derived from the frames that populate them, so gating a
+    frame cannot leave a stratum empty — it removes the stratum instead, and the
+    node then teaches fewer paradigm classes than the lexeme set contains, with
+    nothing failing anywhere. Gate every accusative frame to `people` and the
+    accusative nodes quietly stop teaching neuter and masculine-inanimate
+    endings: measured, N04 drops from three strata to two and N05 from four to
+    two, and the build reports success.
+
+    These rules are the ones that genuinely apply to any noun — you can name,
+    like, lack or think about anything — so each keeps one ungated frame, and
+    every noun must reach every one of them. That is what makes the gates on the
+    *other* frames safe to add, and safe to keep adding as the lexeme set grows.
+    """
+    from pl.models import Form, Lexeme
+
+    universal = {
+        "NOM_SG": "name it",
+        "NOM_PREDICATE": "point at it",
+        "ACC_AFTER_TRANSITIVE_VERB": "like it",
+        "GEN_NEGATION": "lack it",
+        "LOC_PREPOSITION": "think about it",
+    }
+    reached: dict[str, set[int]] = {rule: set() for rule in universal}
+    for item, pattern, form in db.execute(
+        select(Item, Pattern, Form)
+        .join(Pattern, Pattern.id == Item.pattern_id)
+        .join(Form, Form.id == Item.target_form_id)
+    ):
+        if pattern.rule_key in reached:
+            reached[pattern.rule_key].add(form.lexeme_id)
+
+    nouns = {lx.id: lx.lemma for lx in db.scalars(select(Lexeme).where(Lexeme.pos == "subst"))}
+    missing = {
+        f"{rule} ({why})": sorted(nouns[i] for i in nouns.keys() - reached[rule])
+        for rule, why in universal.items()
+        if nouns.keys() - reached[rule]
+    }
+    assert not missing, (
+        "theme gating has cut nouns out of a rule that applies to every noun: "
+        f"{missing}"
+    )
+
+
+def test_removing_content_is_reported_because_the_build_never_deletes(db):
+    """The build is an upsert, so *removing* content does nothing to a database
+    that already has it.
+
+    Gate a frame away from a theme and every sentence it used to make is still
+    stored, still served, and the build still reports success — the 121 items
+    the theme gates removed were all still live in the working database
+    afterwards. Deleting them automatically is not the answer: an item may
+    already carry attempts and error events, and a content edit is not a reason
+    to rewrite what the learner did. So the build says so, and the operator
+    decides.
+    """
+    from pl.content.ingest import stale_items
+
+    assert stale_items(db) == [], "a freshly built curriculum has stale items"
+
+    node = db.scalar(select(Node))
+    db.add(
+        Item(
+            node_id=node.id,
+            exercise_type="cloze",
+            prompt="Kupuję ___.",
+            expected_answer="kościół",  # "I am buying the church" — gated away
+            source="template",
+        )
+    )
+    db.commit()
+
+    stale = stale_items(db)
+    assert [i.expected_answer for i in stale] == ["kościół"], (
+        "an item the current frames cannot produce went unreported, so removing "
+        "content silently does nothing to an existing database"
+    )

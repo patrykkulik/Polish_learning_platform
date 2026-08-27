@@ -44,12 +44,21 @@ announced, and one announced twice teaches the learner the number is decorative.
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
 aspect taught from the first verb as pairs. 76 lexemes, 25 frames, 32 authored
-sentences, **1,024 items** across six exercise types — cloze (678),
-free translation (131), multiple choice (113, covering both form selection and
-meaning recall), preposition drill (58), listening dictation (26) and aspect
+sentences, **904 items** across six exercise types — cloze (614),
+free translation (112), multiple choice (107, covering both form selection and
+meaning recall), preposition drill (27), listening dictation (26) and aspect
 choice (18) — all generated with no LLM and no human review. Multi-slot items
 bring the two error classes a single blank cannot produce: `WORD_ORDER` and
 `MISSING_CONSTITUENT`.
+
+**Frames are gated by theme, so nonsense does not scale with vocabulary.** An
+ungated frame makes one sentence per lexeme, so an unsuitable pairing is one bad
+sentence *per unsuitable noun* — `Kupuję szkołę` ("I am buying the school") is a
+curiosity at 76 lexemes and a systematic defect at 2,000. Gating the core frames
+removed 139 such sentences and added none; letting a lexeme carry several themes
+(`dom` is a venue you go to *and* a home you own) recovered 25 good ones the
+gates had cost. That is why the item count above went down: it is the same
+curriculum with the absurd sentences taken out.
 
 **Content pipeline and audio.** The design's pipeline is generate → validate →
 review → speak. `pl/content/validate.py` implements the validation stage and
@@ -131,9 +140,21 @@ the learner may carry one weak paradigm class forward", but 3/4 = 0.75, so the
 fraction always demanded four of four.
 
 Across six seeds, ninety days each: median distinct items 456 → **526**, median
-nodes opened 4 → **8**, busiest card 196–578 reviews → **34–58**. The mechanism
-is gone on every seed; the outcome is not uniform — five seeds of six reach eight
-or nine nodes and one stays at four, which is the next thing to take apart.
+nodes opened 4 → **8**, busiest card 196–578 reviews → **34–58**.
+
+On the current gated curriculum that settles at a median **518 of 904 items** and
+**8 of 13 nodes**, with all six exercise types on five seeds of six. **One run in
+six still stalls at four nodes**, and it is the `N03` chokepoint: that node has a
+single stratum, so its one pattern card gates six others, and a stalled run shows
+`V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3 and `N03` **0/1 — one card at 5.8
+stability against a 7.0 bar**. Which seed stalls moves when the content changes,
+so it is roughly a one-in-six probability rather than a bug.
+
+The fix is content, and only because the gate changed: with
+`MASTERY_ALLOWED_SHORTFALL = 1`, a second paradigm class turns `N03` from 1-of-1
+into 1-of-2. All twenty feminine nouns share one class; `noc`/`sól`/`wieś`
+(accusative = nominative) are the missing one, and a learner trap the course
+never teaches. Under the old gate that same edit made `N03` harder.
 
 ## Quick start
 

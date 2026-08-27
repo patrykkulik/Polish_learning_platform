@@ -115,7 +115,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
             continue
         admitted = frame.get("themes")
         for lexeme in db.scalars(select(Lexeme)):
-            if admitted and themes.get(lexeme.lemma) not in admitted:
+            if admitted and not themes.get(lexeme.lemma, set()).intersection(admitted):
                 continue
             if _frame_target(_cells(db, lexeme), frame) is None:
                 continue
@@ -243,7 +243,7 @@ def build_items(db: Session) -> list[Item]:
             # sklepem" inflects correctly and means nothing, and a drill the
             # learner cannot read as a sentence is a worse drill.
             admitted = frame.get("themes")
-            if admitted and themes.get(lexeme.lemma) not in admitted:
+            if admitted and not themes.get(lexeme.lemma, set()).intersection(admitted):
                 continue
 
             if frame.get("vocabulary"):

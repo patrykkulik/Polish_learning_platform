@@ -103,12 +103,19 @@ def node_key_for(rule: str, lexeme, mapping: dict) -> str | None:
     return None
 
 
-def lexeme_themes() -> dict[str, str]:
-    """lemma -> theme, for frames that only make sense with some of the set."""
-    return {
-        entry["lemma"]: entry.get("theme", "")
-        for entry in _load("lexemes.yaml")
-    }
+def lexeme_themes() -> dict[str, set[str]]:
+    """lemma -> its themes, for frames that only make sense with some of the set.
+
+    A *set*, because a noun can honestly belong to more than one. `dom` is a
+    venue you go to and a home you own; with one theme apiece, gating "Mam ___"
+    away from venues to stop `Mam kino` also stops `Mam dom`, and gating it the
+    other way admits both. Single-theme lexemes stay written as `theme:`.
+    """
+    themes: dict[str, set[str]] = {}
+    for entry in _load("lexemes.yaml"):
+        listed = entry.get("themes") or [entry.get("theme", "")]
+        themes[entry["lemma"]] = {t for t in listed if t}
+    return themes
 
 
 def _upsert_forms(db: Session, lexeme: Lexeme, cells) -> None:
@@ -355,6 +362,45 @@ def ingest_all(db: Session) -> dict[str, Node]:
     return nodes
 
 
+def stale_items(db: Session) -> list:
+    """Items in this database that the current data files no longer produce.
+
+    The build is an upsert and never deletes, which is right — an item may
+    already carry attempts and error events, and editing a frame is not a reason
+    to rewrite what the learner did. But it means *removing* content has no
+    effect on a database that already has it: gate a frame away from a theme and
+    every sentence it used to make is still sitting there, still being served.
+
+    Detected by building the curriculum from scratch in memory and diffing the
+    item keys, so the check runs the real build path rather than a second
+    implementation of it that would drift from the first.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from pl import models
+    from pl.content import frames
+
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    canonical = sessionmaker(bind=engine, future=True, expire_on_commit=False)()
+    try:
+        ingest_all(canonical)
+        frames.build(canonical)
+        produced = {
+            (i.exercise_type, i.prompt, i.expected_answer)
+            for i in canonical.scalars(select(models.Item))
+        }
+    finally:
+        canonical.close()
+
+    return [
+        item
+        for item in db.scalars(select(models.Item))
+        if (item.exercise_type, item.prompt, item.expected_answer) not in produced
+    ]
+
+
 def main() -> None:
     """Build the whole curriculum into the configured database.
 
@@ -385,6 +431,23 @@ def main() -> None:
             f"  (template {counts.get('template', 0)},"
             f" generated {counts.get('generated', 0)})"
         )
+
+        stale = stale_items(session)
+        if stale:
+            print(
+                f"\n  {len(stale)} items are still stored but are no longer produced"
+                f" by the current frames and lexemes."
+            )
+            for item in stale[:5]:
+                print(f"    {item.prompt or '(free translation)'} -> {item.expected_answer}")
+            if len(stale) > 5:
+                print(f"    ... and {len(stale) - 5} more")
+            print(
+                "  Nothing was deleted: these may carry attempts and error events,\n"
+                "  and a content edit is not a reason to rewrite the learner's history.\n"
+                "  They will still be served. Delete the database and rebuild to drop\n"
+                "  them, or keep them deliberately."
+            )
     finally:
         session.close()
 

@@ -769,6 +769,40 @@ numbers in a header. Two things are added here, and both are deliberately quiet.
 - Content is rebuilt, not migrated — items are a pure function of frames × lexemes, so regenerating is
   always safe. Cards reference `form` and `pattern`, never `item`, so regeneration never orphans a
   schedule. This is why §"Data model" moves the card's referent off `item`.
+- **"Rebuilt, not migrated" is true of adding content and false of removing it.** The build is an
+  upsert and never deletes, which is right — an item may already carry attempts and error events, and
+  editing a frame is not a reason to rewrite what the learner did. But it means a *narrowing* edit has
+  no effect on a database that already has the wider content: the 121 sentences the theme gates below
+  removed were all still stored, and still being served, after a successful rebuild. `ingest.main`
+  now reports them and deletes nothing; the operator decides.
+
+### Frames are gated by theme, so nonsense does not scale with vocabulary
+
+- **The problem is multiplicative.** An ungated frame produces one sentence per lexeme, so an unsuitable
+  pairing is one bad sentence *per unsuitable noun*. At 76 lexemes `Kupuję szkołę` ("I am buying the
+  school") is a curiosity; at the 2,000–3,000 conversational B1 needs it is a systematic defect, and
+  it arrives at exactly the moment content work starts paying off. Gating is therefore a prerequisite
+  for scaling vocabulary, not a polish pass after it.
+- **Design choice:** `themes` on a frame admits only the lexemes it reads sensibly with. `Verified:`
+  applied to the eight ungated core frames this removes 139 sentences — `Kupuję sklep`, `Kupuję morze`,
+  `Mam kościół`, `Widzę czas`, `Czekam na krzesło` — and adds none.
+- **Design choice: a lexeme may carry several themes**, because a noun can honestly be several things.
+  `dom` is a venue you go to *and* a home you own; with one theme apiece, gating "Mam ___" away from
+  venues to stop `Mam kino` also stops `Mam dom`. `Verified:` multi-theme recovers 25 good sentences
+  the single-theme version had cost — `Mam dom`, `Kupuję rower`, `Nie mam pracy`, `Interesuję się
+  pracą` — while keeping all 115 absurd ones out. Written as `themes: [venue, home]`; `theme:` still
+  works for the ordinary single case.
+- **Gating narrows a node rather than emptying it, and that is the failure mode to guard.** Strata are
+  derived from the frames that populate them, so a gated frame removes its stratum rather than leaving
+  it item-less. `Verified:` gating every accusative frame to `people` takes N04 from three strata to
+  two and N05 from four to two — the build succeeds, no stratum is empty, no test fails, and the node
+  silently stops teaching neuter and masculine-inanimate accusatives.
+- **Design choice:** every rule that genuinely applies to any noun keeps one **ungated** frame —
+  `NOM_CITATION`, `TO_JEST`, `LUBIE`, `GEN_NIE_MA`, `LOC_O`. You can name, point at, like, lack or
+  think about anything. `test_the_universal_rules_still_reach_every_noun` is the guard, and it is what
+  makes gating the *other* frames safe to keep adding. Rules that are not universal — `INST`,
+  `GEN_POSSESSION`, `GEN_PREPOSITION` — are wholly theme-scoped on purpose: "Idę do ___" is a sentence
+  about venues, and a stratum it never reaches is one that rule was never teaching.
 
 ### Offline contradicts server-side grading
 
@@ -1057,6 +1091,9 @@ to settle an argument — it will confidently settle it the wrong way.**
   | before | 424–476, median **456** | 4,4,4,4,4,5 — median **4** | 196–578 |
   | after | 385–626, median **526** | 4,8,8,8,9,9 — median **8** | **34–58** |
 
+  (Both rows measured before the theme gates below cut the item bank from 1,024 to 904, so read the
+  item counts against each other rather than against the current total.)
+
   The mechanism is gone on *every* seed — no card is reviewed hundreds of times any more. The
   *outcome* is not uniform: five seeds of six reach eight or nine nodes, and one stays at four, for
   reasons that are not the stability bar (it clears 13 of its 14 pattern cards either way). Worth
@@ -1148,9 +1185,25 @@ to settle an argument — it will confidently settle it the wrong way.**
 **Would stop a real learner**
 
 - **Nothing outright, at this revision** — the first time that has been true. A learner at 85%
-  accuracy meets a median 526 of 1,024 items and opens a median 8 of 13 nodes over ninety simulated
-  days, against 20 items and 1 node when this work started. One seed of six still stalls at four
-  nodes and is not explained by anything measured here; it is the obvious next thing to take apart.
+  accuracy meets a median **518 of 904** items and opens a median **8 of 13** nodes over ninety
+  simulated days, against 20 items and 1 node when this work started, and meets all six exercise
+  types on five seeds of six.
+
+  **One run in six still stalls at four nodes, and it is the `N03` chokepoint.** `N03` carries a
+  single stratum, so `strata_needed(1)` is 1 and its one pattern card gates `N05`, `N06` and the six
+  nodes behind them. Measured on a stalled run: `V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3, and
+  `N03` **0/1 — one card at 5.8 stability against a 7.0 bar**. Which seed stalls moves when the
+  content changes, so it is a probability rather than a bug: roughly one learner in six.
+
+  **The fix is now content, and only because the gate changed.** With
+  `MASTERY_ALLOWED_SHORTFALL = 1`, `strata_needed(2)` is **1** — so giving `N03` a second paradigm
+  class turns 1-of-1 into 1-of-2 and the chokepoint dissolves. All twenty feminine nouns in the set
+  share `f:acc-ę|nom-a`; the consonant-final feminines (`noc`, `sól`, `wieś`, where the accusative
+  equals the nominative) are the missing class, and a real learner trap the course never teaches.
+  Under the old gate this same edit made `N03` *harder* (2-of-2), which is why it was rejected then
+  and is right now. It wants a native speaker's eye on the glosses and the sentences the frames would
+  build from them.
+
   Beyond that the limit is a ceiling rather than a wall, and it is content — 76 lexemes is roughly
   3% of conversational B1. See §Content.
 
