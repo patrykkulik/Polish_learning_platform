@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pl.domain import STRICT_ORTHOGRAPHY, Diagnosis, ErrorClass
-from pl.models import Card, ErrorEvent, Form, Item, Node, Review, Sense
+from pl.models import Attempt, Card, ErrorEvent, Form, Item, Node, Review, Sense
 
 #: Stock parameters. Optimisation needs roughly a thousand reviews and pulls
 #: torch; with one learner there is nothing to fit.
@@ -195,6 +195,45 @@ def ratings_for(item: Item, error_class: ErrorClass) -> dict[str, Rating]:
     return ratings
 
 
+#: Advance a card's schedule at most once per day.
+#:
+#: A pattern card is shared by every item in its stratum, so a session holding
+#: ten items of one rule reviewed that rule's card ten times, minutes apart. FSRS
+#: grows stability from the interval actually elapsed, so those are ten intervals
+#: of nearly zero: measured over ninety days, one card took **447 reviews** and
+#: its stability stalled at 6.11, below the seven-day mastery bar, while a
+#: low-traffic card in the same node reached 112 on eight reviews. The busiest
+#: cards were the least able to master — crushed by their own popularity rather
+#: than by anything the learner did or did not know.
+#:
+#: With this on, the busiest card takes 34-58 reviews instead of 196-578 — the
+#: mechanism is gone on every seed tried — and the median ninety-day learner
+#: opens eight nodes instead of four. Later encounters the same day still record
+#: their attempt and their error events, so remediation still sees what went
+#: wrong; only the *schedule* is left alone.
+ONE_REVIEW_PER_DAY = True
+
+
+def _reviewed_today(db: Session, card: Card) -> bool:
+    """Has this card's schedule already moved today?
+
+    A pattern card is shared by every item in its stratum, so a session holding
+    ten items of one rule reviews that rule's card ten times. FSRS reads the
+    interval since the last review; ten reviews minutes apart are ten intervals
+    of nearly zero, and the card's stability is crushed by its own popularity
+    rather than by the learner's ignorance.
+    """
+    midnight = datetime.now(UTC).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+    )
+    return db.scalar(
+        select(Review.id)
+        .join(Attempt, Attempt.id == Review.attempt_id)
+        .where(Review.card_id == card.id, Attempt.created_at >= midnight)
+        .limit(1)
+    ) is not None
+
+
 def apply_diagnosis(
     db: Session,
     user_id: int,
@@ -211,6 +250,8 @@ def apply_diagnosis(
         rating = ratings.get(population)
         if rating is None:
             continue  # unscored: this card's schedule is deliberately untouched
+        if ONE_REVIEW_PER_DAY and _reviewed_today(db, card):
+            continue
         apply_rating(db, card, rating, attempt_id)
         applied[population] = rating
 

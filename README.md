@@ -115,15 +115,25 @@ starting the introduction round-robin at a different node each session (a ten-ca
 budget is spent by the sixth node, so `N12` was never reached). A ninety-day
 learner goes from 262 distinct items and two exercise types to 474 and five.
 
-What is left is not composition and not content — it is the gate's arithmetic.
-The learner opens 5 nodes of 13, because `mastered / strata >= 0.8` grants no
-tolerance at all below five strata, and the whole critical path between N01 and
-N06 is narrow: N03 has one stratum, N04 three, N05 four. For those, "80% of the
-node's pattern cards" means 100%, and one lapse is enough. Polish does not offer
-five distinct feminine accusative classes, so N03 cannot be widened out of it by
-any amount of vocabulary. Whether to give the gate an explicit tolerance is a
-decision about what mastery means; design doc §"Known defects" has the
-measurements and does not make it.
+**The busiest cards were being crushed by their own popularity.** A pattern card
+is shared by every item in its stratum and was scored once per item, so a session
+holding ten items of one rule reviewed that card ten times minutes apart — and
+FSRS grows stability from the interval actually elapsed. One card took **447
+reviews and stalled at 6.11 stability**, under the seven-day mastery bar, while a
+low-traffic card in the same node reached 112 on eight reviews. The cards the
+learner practised most were the least able to master. `ONE_REVIEW_PER_DAY`
+advances a card at most once daily; later encounters still record their attempt
+and error events, so remediation still sees everything that went wrong.
+
+`MASTERY_ALLOWED_SHORTFALL = 1` implements the design's own worked example, which
+the code never delivered: it says a four-stratum node means "three of four, and
+the learner may carry one weak paradigm class forward", but 3/4 = 0.75, so the
+fraction always demanded four of four.
+
+Across six seeds, ninety days each: median distinct items 456 → **526**, median
+nodes opened 4 → **8**, busiest card 196–578 reviews → **34–58**. The mechanism
+is gone on every seed; the outcome is not uniform — five seeds of six reach eight
+or nine nodes and one stays at four, which is the next thing to take apart.
 
 ## Quick start
 

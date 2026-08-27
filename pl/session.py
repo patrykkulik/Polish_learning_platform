@@ -50,6 +50,21 @@ from pl.schedule import LEXICAL, MORPH, PATTERN, Rating, populations_for
 MASTERY_STABILITY_DAYS = 7.0
 #: Fraction of a node's strata that must clear it.
 MASTERY_FRACTION = 0.8
+#: Strata that may remain unmastered whatever the fraction works out to.
+#:
+#: This is the design's own worked example, finally implemented. §"Pattern cards
+#: are stratified" says of the four-stratum accusative node: *"80% means three of
+#: four, and the learner may carry one weak paradigm class forward while the
+#: other three are solid."* Three of four is 0.75, so the fraction alone has
+#: always demanded four of four. The example described behaviour the formula
+#: never delivered.
+#:
+#: A fraction cannot deliver it, either: `mastered / n >= 0.8` is 1-of-1, 2-of-2,
+#: 3-of-3 and 4-of-4, because there is no granularity between "all" and "not all"
+#: until five strata — and four of the eleven grammar nodes are narrower than
+#: that, three of them (N03, N04, N05) on the critical path to everything else.
+#: Carrying one weak class forward has to be said in strata to be sayable at all.
+MASTERY_ALLOWED_SHORTFALL = 1
 #: Successful reviews, and the calendar span they must cover.
 MASTERY_MIN_REVIEWS = 3
 MASTERY_MIN_SPAN_DAYS = 7
@@ -172,6 +187,18 @@ def _card_is_mastered(db: Session, card: Card | None) -> bool:
     )
 
 
+def strata_needed(n: int) -> int:
+    """How many of a node's `n` strata must be mastered for the node to be.
+
+    Stated as a count rather than as `mastered / n >= FRACTION`, because a
+    shortfall is not expressible as a fraction on a narrow node — and it is the
+    narrow nodes that need it. Never below one: a node is not mastered by
+    mastering nothing, whatever the arithmetic says.
+    """
+    by_fraction = min(k for k in range(n + 1) if k / n >= MASTERY_FRACTION)
+    return max(1, min(by_fraction, n - MASTERY_ALLOWED_SHORTFALL))
+
+
 def is_mastered(db: Session, user_id: int, node: Node) -> bool:
     """Mastery, evaluated over the population appropriate to the node's type.
 
@@ -202,7 +229,7 @@ def is_mastered(db: Session, user_id: int, node: Node) -> bool:
         )
         if _card_is_mastered(db, card):
             mastered += 1
-    return (mastered / len(ref_ids)) >= MASTERY_FRACTION
+    return mastered >= strata_needed(len(ref_ids))
 
 
 def node_mastery(db: Session, user_id: int, node: Node) -> dict:

@@ -1034,58 +1034,56 @@ a seeded global RNG, and `_new_card` passing FSRS an explicit `due` instead of l
 consult a clock of its own. **A measuring instrument that disagrees with itself does not merely fail
 to settle an argument — it will confidently settle it the wrong way.**
 
-**Would stop a real learner**
-
-- **The critical path runs through a single-stratum node, and its gate is all-or-nothing.** With
-  criterion 9 bounded, ninety simulated days open five nodes of thirteen. The remaining eight —
-  319 items, and *every* prep-drill, aspect-choice and free-translation item in the course — sit
-  behind `N06`, which needs `N02` and `N05`; `N05` needs `N03` and `N04`. **`N03` carries one
-  stratum.** `MASTERY_FRACTION` of 0.8 over a single stratum rounds to one of one, so a node on the
-  critical path demands 100% where the design intends 80%, with no tolerance for a single lapse.
-  §"Pattern cards are stratified" anticipated exactly this — *"under one-card-per-rule the threshold
-  was 80% of 1"* — and the M1 lexeme set reintroduced it by accident, because 58 nouns yield only one
-  feminine-accusative paradigm class.
-
-  **`MASTERY_FRACTION` has no effect below five strata, and that is arithmetic rather than opinion.**
-  The gate is `mastered / strata >= 0.8`, so:
-
-  | strata | must master | tolerance |
-  |---:|---:|---:|
-  | 1 | 1 | **0** |
-  | 2 | 2 | **0** |
-  | 3 | 3 | **0** |
-  | 4 | 4 | **0** |
-  | 5 | 4 | 1 |
-  | 8 | 7 | 1 |
-  | 28 | 23 | 5 |
-
-  Four of the eleven grammar nodes carry fewer than five strata — `N03` (1), `N04` (3), `N05` (4) and
-  `N09` (3) — so for them "80% of the node's pattern cards" means **100%, with no tolerance for a
-  single lapse**. `N03`, `N04` and `N05` are the entire critical path between `N01` and `N06`. The
-  design's claim that stratification "is what makes 80% a meaningful fraction" holds only for the
-  wide nodes; on the narrow ones the fraction rounds away to nothing.
-
-  **More lexemes will not fix this, and the first draft of this entry said they would.** Taking `N03`
-  from one stratum to two moves its gate from 1-of-1 to 2-of-2 — still 100%, and strictly harder. All
-  twenty feminine nouns in the set share the paradigm class `f:acc-ę|nom-a`; adding the consonant-
-  final feminines (`noc`, `sól`, `wieś`, where the accusative equals the nominative) would add the
-  one genuinely missing contrast and a real learner trap, but Polish does not offer five distinct
-  feminine accusative classes, so `N03` cannot reach tolerance by any amount of vocabulary. **It is a
-  100% gate permanently, by the shape of the language.**
-
-  **The thresholds are not the fix either, and that was measured rather than assumed.** Every started
-  card already clears `MASTERY_MIN_REVIEWS` and `MASTERY_MIN_SPAN_DAYS`; the gate is bound entirely
-  by `stability_max`. Dropping it from 7 days to 5, or `MASTERY_FRACTION` from 0.8 to 0.7, buys one
-  extra node on one seed of two and nothing on the other; dropping stability to 3 makes the outcome
-  *worse*, serving three exercise types where the shipped configuration serves four. A hypothesis
-  that remediation was suppressing stability growth by reviewing cards early was also tested and is
-  false: disabling remediation entirely leaves the same four nodes open, with fewer items met and
-  *lower* mean stability.
-
-  **What is left is a decision, not a patch:** either accept that narrow rules are all-or-nothing, or
-  give the gate an explicit tolerance that does not depend on the stratum count (`mastered >= n - 1`
-  once `n > 1`, say). That changes what mastery *means*, so it is not made here.
 **Fixed at this revision**
+
+- ~~The graph stops opening after five nodes.~~ **The gate was never the problem. The busiest cards
+  were being crushed by their own popularity.**
+
+  A pattern card is shared by every item in its stratum, and `apply_diagnosis` scored it once per
+  item. A session holding ten items of one rule reviewed that rule's card ten times, minutes apart —
+  and FSRS grows stability from the interval actually elapsed, so those are ten intervals of nearly
+  zero. Measured over ninety days: **one card took 447 reviews and stalled at 6.11 stability**, just
+  under the seven-day bar, while a low-traffic card in the same node reached **112 on eight
+  reviews**. The cards the learner practised most were the least able to master. That is the exact
+  inversion of what a schedule is for, and it is §"What the sources actually say" 5 — *"pattern cards
+  as specified violate FSRS's central assumption"* — resurfacing after stratification had reduced it.
+
+  `ONE_REVIEW_PER_DAY` advances a card at most once a day. Later encounters still record their
+  attempt and their error events, so remediation still sees everything the learner got wrong; only
+  the schedule is left alone. Measured across six seeds, ninety days each:
+
+  | | distinct items | nodes opened | busiest card, reviews |
+  |---|---|---|---|
+  | before | 424–476, median **456** | 4,4,4,4,4,5 — median **4** | 196–578 |
+  | after | 385–626, median **526** | 4,8,8,8,9,9 — median **8** | **34–58** |
+
+  The mechanism is gone on *every* seed — no card is reviewed hundreds of times any more. The
+  *outcome* is not uniform: five seeds of six reach eight or nine nodes, and one stays at four, for
+  reasons that are not the stability bar (it clears 13 of its 14 pattern cards either way). Worth
+  saying plainly rather than quoting the good seeds, which an earlier draft of this entry did.
+
+  **Three wrong answers were ruled out on the way, each by measurement.** *More lexemes:* taking `N03`
+  from one stratum to two moves its gate from 1-of-1 to 2-of-2 — still 100%, and strictly harder.
+  *Lower thresholds:* every started card already clears `MASTERY_MIN_REVIEWS` and
+  `MASTERY_MIN_SPAN_DAYS`, and dropping `MASTERY_STABILITY_DAYS` to 3 makes the outcome *worse*.
+  *Remediation reviewing cards early:* disabling remediation entirely leaves the same four nodes open
+  with fewer items met and lower mean stability. An earlier revision of this entry asserted the first
+  of those as the fix; it was written from the arithmetic rather than from the cards.
+
+- ~~`MASTERY_FRACTION` grants no tolerance below five strata.~~ **The design's own worked example,
+  finally implemented.** §"Pattern cards are stratified" says of the four-stratum accusative node:
+  *"80% means three of four, and the learner may carry one weak paradigm class forward while the
+  other three are solid."* Three of four is 0.75, so `mastered / n >= 0.8` has always demanded four
+  of four. **The example described behaviour the formula never delivered**, and no fraction can
+  deliver it — there is no granularity between "all" and "not all" below five strata, and four of the
+  eleven grammar nodes are narrower than that, three of them (`N03`, `N04`, `N05`) on the critical
+  path to everything else.
+
+  `MASTERY_ALLOWED_SHORTFALL = 1` says it in strata, which is the only unit it is sayable in:
+  `strata_needed(4) == 3`, `strata_needed(3) == 2`, `strata_needed(1) == 1` — a node is never
+  mastered by mastering nothing — and wide nodes are untouched, since there the fraction already
+  binds. This is a change to what mastery *means*, made deliberately and on the design's own stated
+  intent rather than to make a number go up.
 
 - ~~Listening-dictation items are unreachable.~~ **And the cause was larger than dictation.** 26
   dictation items, 131 free translations and 58 prep drills were built, audible, correctly graded —
@@ -1140,6 +1138,15 @@ to settle an argument — it will confidently settle it the wrong way.**
 - ~~The pattern-card draw ignores the known-lexeme intersection and is unordered.~~ Intersected with
   the lexemes the learner holds a lexical or morph card for, and ordered by how often each item has
   been answered — so the stratum rotates without a random seed, and the composer stays deterministic.
+
+**Would stop a real learner**
+
+- **Nothing outright, at this revision** — the first time that has been true. A learner at 85%
+  accuracy meets a median 526 of 1,024 items and opens a median 8 of 13 nodes over ninety simulated
+  days, against 20 items and 1 node when this work started. One seed of six still stalls at four
+  nodes and is not explained by anything measured here; it is the obvious next thing to take apart.
+  Beyond that the limit is a ceiling rather than a wall, and it is content — 76 lexemes is roughly
+  3% of conversational B1. See §Content.
 
 **Unimplemented, not merely defective**
 

@@ -1088,3 +1088,79 @@ def test_an_untouched_stratum_does_not_always_offer_the_same_exercise(db, user):
         "the stratum offered the same item at every review count — the draw is "
         "pinned to build order, and whatever was generated first wins forever"
     )
+
+
+# ------------------------------------------------------------ the mastery gate
+
+
+def test_a_four_stratum_node_lets_one_weak_class_be_carried():
+    """The design's own worked example, finally true of the code.
+
+    §"Pattern cards are stratified" says of the four-stratum accusative node:
+    *"80% means three of four, and the learner may carry one weak paradigm class
+    forward while the other three are solid."* Three of four is 0.75, so
+    `mastered / n >= 0.8` demanded four of four. The example described behaviour
+    the formula never delivered, and no fraction can deliver it — there is no
+    granularity between "all" and "not all" below five strata, and four of the
+    eleven grammar nodes are narrower than that.
+    """
+    from pl.session import strata_needed
+
+    assert strata_needed(4) == 3, "the design's own example: three of four"
+    assert strata_needed(3) == 2
+    assert strata_needed(1) == 1, "a node is not mastered by mastering nothing"
+    # Wide nodes are untouched: the fraction is already the binding constraint.
+    assert strata_needed(5) == 4
+    assert strata_needed(8) == 7
+    assert strata_needed(28) == 23
+
+
+def test_a_rule_card_advances_once_a_day_however_often_its_rule_comes_up(db, user):
+    """A pattern card is shared by every item in its stratum.
+
+    A session holding ten items of one rule reviewed that rule's card ten times,
+    minutes apart, and FSRS grows stability from the interval actually elapsed —
+    so those were ten intervals of nearly zero. Measured over ninety days one
+    card took 447 reviews and stalled at 6.11 stability, under the seven-day
+    bar, while a low-traffic card in the same node reached 112 on eight reviews.
+    The busiest cards were the least able to master, which is the opposite of
+    what the schedule is for.
+
+    The attempt and its error events are still recorded — remediation still sees
+    everything the learner got wrong. Only the schedule is left alone.
+    """
+    from pl.models import Review
+    from pl.schedule import PATTERN
+
+    pattern, items, _ = _stratum_with_several_lexemes(db)
+    drilled = items[:4]
+    assert len(drilled) == 4, "need several items in one stratum to prove anything"
+
+    for item in drilled:
+        answer(db, user, item)
+
+    card = db.scalar(
+        select(Card).where(
+            Card.user_id == user.id,
+            Card.population == PATTERN,
+            Card.pattern_id == pattern.id,
+        )
+    )
+    assert card is not None, "four items of this rule created no rule card"
+
+    reviews = db.scalar(
+        select(func.count()).select_from(Review).where(Review.card_id == card.id)
+    )
+    assert reviews == 1, (
+        f"the rule card was advanced {reviews} times in one day — its stability "
+        f"is being set by how often the rule comes up, not by recall"
+    )
+
+    # The evidence is still there; only the scheduling is suppressed.
+    assert db.scalar(
+        select(func.count()).select_from(Attempt).where(Attempt.user_id == user.id)
+    ) == 4, "attempts must still be recorded for every answer"
+
+    # Cards that are *not* shared still move once each.
+    forms = {i.target_form_id for i in drilled}
+    assert len(forms) > 1, "these items share a form, so they prove nothing"
