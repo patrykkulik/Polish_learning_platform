@@ -101,6 +101,10 @@ def _new_card(user_id: int, population: str, **ref) -> Card:
         population=population,
         fsrs_state_json=fresh.to_dict(),
         due_at=fresh.due.replace(tzinfo=None),
+        # Stamped here rather than by the composer: this is the one place a card
+        # comes into existence, so it is the only place the day it was introduced
+        # can be recorded without the composer and the scheduler disagreeing.
+        created_at=datetime.now(UTC).replace(tzinfo=None),
         **ref,
     )
 
@@ -143,6 +147,19 @@ def cards_for_item(db: Session, user_id: int, item: Item) -> dict[str, Card]:
     if PATTERN in allowed and item.pattern_id is not None:
         out[PATTERN] = card_for(db, user_id, PATTERN, item.pattern_id)
     return out
+
+
+def retrievability(card: Card, at: datetime | None = None) -> float:
+    """The card's predicted probability of recall right now.
+
+    The *display* half of mastery (criterion 14). This decays while the learner
+    sleeps, which is the whole point of showing it: `stability_max`, which the
+    unlock gate reads, is a high-water mark and can only ever rise, so a progress
+    bar drawn from it would tell a learner who has not studied in a month that
+    they still know everything.
+    """
+    state = FsrsCard.from_dict(card.fsrs_state_json)
+    return SCHEDULER.get_card_retrievability(state, at or datetime.now(UTC))
 
 
 def apply_rating(db: Session, card: Card, rating: Rating, attempt_id: int) -> None:

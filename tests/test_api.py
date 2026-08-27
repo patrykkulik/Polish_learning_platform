@@ -158,3 +158,116 @@ def test_a_correct_answer_reports_what_it_scored(client):
     ).json()
     assert body["correct"] is True
     assert body["scored"], "a correct answer must move at least one card"
+
+
+# ----------------------------------------------- criterion 14, the progress view
+
+
+def test_the_graph_returns_the_mastery_its_docstring_promised(client):
+    """`/api/graph` advertised per-node mastery and returned node titles.
+
+    Criterion 14 wants two different figures per node, and the difference is the
+    whole point: `mastered` reads the latching unlock gate, `mastery` reads
+    current retrievability. A payload carrying only the first cannot draw a
+    progress view whose bars are ever allowed to fall.
+    """
+    http, _ = client
+    body = http.get("/api/graph").json()
+    assert body["nodes"], "an empty graph proves nothing"
+
+    for node in body["nodes"]:
+        assert set(node) == {
+            "key",
+            "title",
+            "type",
+            "unlocked",
+            "mastered",
+            "mastery",
+            "strata",
+            "started",
+            "mastered_strata",
+            "explanation",
+        }
+        assert 0.0 <= node["mastery"] <= 1.0
+        assert node["started"] <= node["strata"]
+        assert node["mastered_strata"] <= node["strata"]
+
+    assert body["vocabulary"]["total"] > 0
+    assert body["vocabulary"]["met"] == 0, "a learner with no history has met none"
+    assert body["retention_curve"] == []
+    assert body["progress"]["streak"] == 0
+
+
+def test_mastery_decays_while_the_unlock_gate_does_not(client):
+    """Criterion 14, stated exactly: the display falls, the gate latches.
+
+    The two numbers are read from different things on purpose — `stability_max`
+    is a high-water mark and cannot fall, retrievability decays with elapsed
+    time. Drawing the progress bar from the gate would tell a learner who has not
+    opened the app in four months that they still know everything.
+    """
+    from datetime import datetime, timedelta
+
+    from pl.models import Card, Item, Node
+
+    http, Session = client
+    item = _one(Session, "mcq")
+    with Session() as db:
+        node_key = db.get(Node, db.get(Item, item.id).node_id).key
+
+    http.post(
+        "/api/submit", json={"item_id": item.id, "answer": item.expected_answer}
+    )
+
+    def mastery_of(key: str) -> dict:
+        return {n["key"]: n for n in http.get("/api/graph").json()["nodes"]}[key]
+
+    before = mastery_of(node_key)
+    assert before["mastery"] > 0, "answering an item moved no mastery at all"
+
+    # Four months of not studying, with the gate's own input left untouched.
+    with Session() as db:
+        for card in db.scalars(select(Card)):
+            state = dict(card.fsrs_state_json)
+            for field in ("last_review", "due"):
+                if state.get(field):
+                    state[field] = (
+                        datetime.fromisoformat(state[field]) - timedelta(days=120)
+                    ).isoformat()
+            card.fsrs_state_json = state
+        db.commit()
+
+    after = mastery_of(node_key)
+    assert after["mastery"] < before["mastery"], (
+        "mastery did not decay over four months away — it is being read off the "
+        "unlock gate rather than off retrievability"
+    )
+    assert after["unlocked"] == before["unlocked"], "the gate moved"
+    assert after["mastered"] == before["mastered"], "the gate moved"
+
+
+def test_the_progress_page_is_served_and_consumes_the_graph(client):
+    """Criterion 14 was unimplemented in both halves: no figure, and no page.
+
+    A payload nothing renders is not a progress view, which is why this asserts
+    the page exists and pulls the script that reads `/api/graph`.
+    """
+    http, _ = client
+    page = http.get("/progress")
+    assert page.status_code == 200
+    assert "/static/progress.js" in page.text
+
+
+# ------------------------------------------------------- the streak is server-side
+
+
+def test_completing_a_session_ignores_a_count_from_the_client(client):
+    """The daily-goal condition used to trust a query parameter.
+
+    Anyone who could type a URL could award themselves a streak without
+    answering a single item, on a server already holding the real count.
+    """
+    http, _ = client
+    body = http.post("/api/session/complete?items_completed=9999").json()
+    assert body["streak"] == 0, "a number in the query string bought a streak"
+    assert body["progress"]["streak"] == 0

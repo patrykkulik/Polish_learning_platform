@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polish — progress</title>
+<style>
+  :root {
+    --ground: #faf8f5;
+    --raised: #ffffff;
+    --line: #e3ddd4;
+    --ink: #1c1a17;
+    --muted: #6b645b;
+    --faint: #989085;
+    --accent: #a8323c;
+    --good: #2f6b46;
+    --good-bg: #e8f1ea;
+    --bad-bg: #f7ebec;
+    --warn: #8a6320;
+    --warn-bg: #f6efe0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #16181c;
+      --raised: #1e2126;
+      --line: #2f343b;
+      --ink: #ece8e2;
+      --muted: #9aa0a8;
+      --faint: #6b7178;
+      --accent: #e0757e;
+      --good: #7fc79b;
+      --good-bg: #1b2b22;
+      --bad-bg: #2c1e20;
+      --warn: #d9ab5e;
+      --warn-bg: #2b2418;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #16181c; --raised: #1e2126; --line: #2f343b;
+    --ink: #ece8e2; --muted: #9aa0a8; --faint: #6b7178;
+    --accent: #e0757e; --good: #7fc79b; --good-bg: #1b2b22;
+    --bad-bg: #2c1e20; --warn: #d9ab5e; --warn-bg: #2b2418;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 16px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  header { border-bottom: 1px solid var(--line); background: var(--raised); }
+  .bar {
+    max-width: 52rem; margin: 0 auto; padding: .75rem 1.25rem;
+    display: flex; align-items: baseline; gap: 1.5rem; flex-wrap: wrap;
+  }
+  .brand { font-weight: 650; letter-spacing: -.01em; margin-right: auto; }
+  .brand span { color: var(--accent); }
+  .stat { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--ink); font-weight: 650; }
+  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a.link:hover { border-bottom-color: var(--accent); }
+
+  main {
+    flex: 1; width: 100%; max-width: 52rem;
+    margin: 0 auto; padding: 2rem 1.25rem 4rem;
+    display: flex; flex-direction: column; gap: 2rem;
+  }
+
+  h2 {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.15rem; font-weight: 600; margin: 0;
+  }
+  .sub { font-size: .82rem; color: var(--faint); margin: .2rem 0 0; }
+
+  section { display: flex; flex-direction: column; gap: .9rem; }
+
+  /* Headline figures. Four numbers that answer different questions, so they are
+     shown side by side rather than folded into one score. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .75rem; }
+  .tile {
+    background: var(--raised); border: 1px solid var(--line);
+    border-radius: 10px; padding: .9rem 1rem;
+  }
+  .tile .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 650; }
+  .tile .v {
+    font-family: ui-serif, Georgia, serif; font-size: 1.7rem;
+    font-variant-numeric: tabular-nums; margin-top: .2rem; line-height: 1.1;
+  }
+  .tile .n { font-size: .78rem; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  thead th {
+    text-align: left; font-size: .72rem; text-transform: uppercase;
+    letter-spacing: .09em; color: var(--faint); font-weight: 650;
+    padding: 0 .6rem .5rem 0; border-bottom: 1px solid var(--line);
+  }
+  thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td { padding: .6rem .6rem .6rem 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody tr.locked { opacity: .5; }
+  .title { font-weight: 600; }
+  .key { font-size: .74rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  /* The decaying bar. Deliberately not the unlock gate's figure — see
+     criterion 14: the gate latches, this does not. */
+  .meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 5rem; }
+  .meter i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  .meter i.done { background: var(--good); }
+
+  .pill {
+    font-size: .68rem; padding: .12rem .5rem; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .pill.open { border-color: var(--good); color: var(--good); }
+  .pill.shut { border-color: var(--line); color: var(--faint); }
+
+  .curve { display: flex; align-items: flex-end; gap: 3px; height: 5.5rem; }
+  /* Each column carries its own track, so a bad day reads as a bad day rather
+     than as a chart that failed to draw. Without it a 9% bar is three pixels of
+     colour floating in white space. */
+  .curve .day {
+    flex: 1; min-width: 4px; height: 100%; border-radius: 3px;
+    background: var(--line); display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  .curve .day i { display: block; background: var(--accent); border-radius: 3px; min-height: 2px; }
+  .curve .day i.strong { background: var(--good); }
+  .axis { display: flex; justify-content: space-between; font-size: .72rem; color: var(--faint); }
+
+  .empty {
+    border: 1px dashed var(--line); border-radius: 10px;
+    padding: 1.5rem; text-align: center; color: var(--muted); font-size: .9rem;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">polski<span>.</span></div>
+    <div class="stat">streak <b id="s-streak">–</b></div>
+    <div class="stat">freezes <b id="s-freezes">–</b></div>
+    <div class="stat">due <b id="s-debt">–</b></div>
+    <a class="stat link" href="/">review</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="empty">Loading…</div>
+</main>
+
+<script src="/static/progress.js"></script>
+</body>
+</html>

@@ -53,14 +53,37 @@ cached to disk.
 Not built: blob storage and a CDN (deployment concerns, not development ones);
 the React PWA (deferred — no capability gain over the current page).
 
-**Two things are built and not reachable, and you would hit both on first use.**
-The learner stops meeting new material on day four — criterion 9 forbids
-introducing anything while a review is overdue, and once enough cards exist for
-one to fall due daily that condition never clears again. And all 26
-listening-dictation items are unreachable: each shares both referents with the
-cloze from the same sentence, and the queue serves the lower id, which is always
-the cloze. Both are the composition rules working as specified, which is why
-neither is a one-line fix. Design doc §"Known defects" has the full list.
+**What a learner actually meets is measured, not assumed.** The counts above say
+what was built; `scripts/journey_sim.py` says what a learner reaches. The two
+once differed by a factor of fifty. A diligent learner answered 1,190 questions
+over sixty days and met twenty distinct items — no grammar, nothing unlocked,
+every headline number above still true. The cause was the middle segment of the
+session: remediation had no budget, so it filled every session from the weakest
+node and the introduction segment never ran again after day one. Fixed, and
+pinned by `test_remediation_does_not_starve_new_material`.
+
+*An earlier revision of this file blamed that on criterion 9 and "day four".
+That explanation was written before anyone simulated it and was wrong: debt was
+clear on most of those days.*
+
+What remains is pacing rather than a defect. Criterion 9 forbids introducing
+anything while a review is overdue, so new material arrives only on days that
+start clear — about 80 distinct items, 58 of 76 lexemes and one node unlocked
+over sixty days at 85% accuracy:
+
+```bash
+uv run python scripts/journey_sim.py 60 20 0.85
+```
+
+Criterion 9 needs a bound (a debt threshold, or a floor of new items that
+outranks it), and that is a decision about what the product is for rather than a
+patch. Run the simulation before changing it, and again afterwards. Its totals
+move by a percent or two between runs — FSRS reads the real clock within each
+simulated day — so treat them as a scale, not a fingerprint.
+
+Still unreachable: all 26 listening-dictation items. Each shares both referents
+with the cloze built from the same sentence, and the queue serves the lower id,
+which is always the cloze. Design doc §"Known defects" has the full list.
 
 ## Quick start
 

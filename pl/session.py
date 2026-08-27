@@ -1,9 +1,13 @@
 """Session composition and the node unlock gate.
 
-Composition runs **debt, then remediation, then new**, and introduces nothing new
-while anything is overdue. That ordering is what makes the streak mean retention
-rather than novelty: a learner with forty due cards cannot bank a day by starting
-a fresh lesson.
+The learner is served **debt, then remediation, then new**, and nothing new is
+introduced while anything is overdue. That ordering is what makes the streak mean
+retention rather than novelty: a learner with forty due cards cannot bank a day
+by starting a fresh lesson.
+
+The segments are *composed* in a different order — debt, new, remediation — and
+`build_session` explains why. In short: remediation wants the whole session and
+has no natural stopping point, so it is composed last, against what is left.
 
 The unlock gate reads `stability_max`, never current stability. FSRS schedules a
 card to fall due exactly when its retrievability decays to 0.9, so "retrievability
@@ -34,7 +38,7 @@ from pl.models import (
     Review,
     Sense,
 )
-from pl import audio
+from pl import audio, schedule
 from pl.domain import AUDIBLE
 from pl.schedule import LEXICAL, MORPH, PATTERN, Rating, populations_for
 
@@ -62,6 +66,18 @@ def end_of_user_day(settings: dict) -> datetime:
     tz = ZoneInfo(settings.get("tz", "UTC"))
     local = datetime.now(tz)
     midnight = datetime.combine(local.date() + timedelta(days=1), datetime.min.time())
+    return midnight.replace(tzinfo=tz).astimezone(UTC).replace(tzinfo=None)
+
+
+def start_of_user_day(settings: dict) -> datetime:
+    """The other end of the learner's day, in the same UTC-naive frame.
+
+    Anything counted "today" — cards introduced, items answered — is counted
+    between this and `end_of_user_day`, so the two boundaries cannot drift apart.
+    """
+    tz = ZoneInfo(settings.get("tz", "UTC"))
+    local = datetime.now(tz)
+    midnight = datetime.combine(local.date(), datetime.min.time())
     return midnight.replace(tzinfo=tz).astimezone(UTC).replace(tzinfo=None)
 
 
@@ -167,6 +183,68 @@ def is_mastered(db: Session, user_id: int, node: Node) -> bool:
     return (mastered / len(ref_ids)) >= MASTERY_FRACTION
 
 
+def node_mastery(db: Session, user_id: int, node: Node) -> dict:
+    """The node's progress as the *display* sees it (criterion 14).
+
+    Deliberately a different number from `is_mastered`, and the difference is the
+    criterion. The gate reads `stability_max`, a monotone high-water mark, so a
+    node once unlocked never re-locks (criterion 13). The display reads current
+    retrievability, which decays while the learner sleeps and recovers when they
+    review. A single number cannot do both jobs: drawn from the gate it is a bar
+    that can only rise, which tells a learner who has not studied in a month that
+    they still know everything; drawn from retrievability it would re-lock half
+    the graph after a holiday.
+
+    `retention` is averaged over every stratum, not merely the started ones — a
+    node the learner has barely begun should read as barely begun, and dividing
+    by what they have started would show a full bar after one good answer.
+    """
+    if node.type == "function":
+        # No competency of its own; it composes the nodes beneath it.
+        parts = [node_mastery(db, user_id, p) for p in _prereqs(db, node.id)]
+        strata = sum(p["strata"] for p in parts)
+        return {
+            "strata": strata,
+            "started": sum(p["started"] for p in parts),
+            "mastered": sum(p["mastered"] for p in parts),
+            "retention": (
+                sum(p["retention"] * p["strata"] for p in parts) / strata
+                if strata
+                else 0.0
+            ),
+        }
+
+    population, ref_ids = _gating_refs(db, node)
+    if not ref_ids:
+        return {"strata": 0, "started": 0, "mastered": 0, "retention": 0.0}
+
+    column = {LEXICAL: Card.sense_id, MORPH: Card.form_id, PATTERN: Card.pattern_id}[
+        population
+    ]
+    started = mastered = 0
+    retained = 0.0
+    for ref_id in ref_ids:
+        card = db.scalar(
+            select(Card).where(
+                Card.user_id == user_id,
+                Card.population == population,
+                column == ref_id,
+            )
+        )
+        if card is None:
+            continue
+        started += 1
+        retained += schedule.retrievability(card)
+        if _card_is_mastered(db, card):
+            mastered += 1
+    return {
+        "strata": len(ref_ids),
+        "started": started,
+        "mastered": mastered,
+        "retention": retained / len(ref_ids),
+    }
+
+
 def evaluate_unlocks(db: Session, user_id: int) -> list[str]:
     """Latch any node whose prerequisites are now all mastered.
 
@@ -197,11 +275,79 @@ def evaluate_unlocks(db: Session, user_id: int) -> list[str]:
 # --------------------------------------------------------------- composition
 
 
-def _items_for_card(db: Session, card: Card) -> list[Item]:
+def known_lexemes(db: Session, user_id: int) -> set[int]:
+    """The lexemes the learner holds a lexical or morph card for.
+
+    §"Pattern cards are stratified" specifies that a pattern card draws from
+    `{lexemes in the stratum} ∩ {lexemes the learner has met}`. Drawing from the
+    whole stratum tests the rule on vocabulary the learner has never seen, and
+    the routing table then scores that failure against the *rule* — the learner
+    is marked down on the genitive for not knowing a noun.
+    """
+    known: set[int] = set()
+    known.update(
+        db.scalars(
+            select(Form.lexeme_id)
+            .join(Card, Card.form_id == Form.id)
+            .where(Card.user_id == user_id, Card.population == MORPH)
+        )
+    )
+    known.update(
+        db.scalars(
+            select(Sense.lexeme_id)
+            .join(Card, Card.sense_id == Sense.id)
+            .where(Card.user_id == user_id, Card.population == LEXICAL)
+        )
+    )
+    return known
+
+
+def _least_practised_first(db: Session, user_id: int, items: list[Item]) -> list[Item]:
+    """Rotate a stratum's draw instead of serving its lowest id forever.
+
+    A stratum holds roughly one item per lexeme in it. An unordered select
+    returns them in insertion order and the debt loop takes the first offerable
+    one, so the rule card is tested on the same noun at every review for the
+    life of the account: the card claims generalisation across its stratum and
+    measures a single word.
+
+    Ordered by how often the learner has actually answered each item, so the
+    draw rotates on its own without a random seed — which keeps the composer
+    deterministic and therefore testable.
+    """
+    if len(items) < 2:
+        return items
+    counts = dict(
+        db.execute(
+            select(Attempt.item_id, func.count(Attempt.id))
+            .where(
+                Attempt.user_id == user_id,
+                Attempt.item_id.in_([i.id for i in items]),
+            )
+            .group_by(Attempt.item_id)
+        ).all()
+    )
+    return sorted(items, key=lambda i: (counts.get(i.id, 0), i.id))
+
+
+def _items_for_card(
+    db: Session, card: Card, known: set[int] | None = None
+) -> list[Item]:
+    """The items that could be served for one due card.
+
+    `known` is the learner's met lexemes, from `known_lexemes`. `None` means "do
+    not restrict", which is what the callers that are not composing a session
+    want.
+    """
     if card.population == MORPH:
         stmt = select(Item).where(Item.target_form_id == card.form_id)
     elif card.population == PATTERN:
-        stmt = select(Item).where(Item.pattern_id == card.pattern_id)
+        items = list(db.scalars(select(Item).where(Item.pattern_id == card.pattern_id)))
+        if known is not None:
+            items = [i for i in items if _lexeme_of_item(db, i) in known]
+        # An empty intersection means the card is not scheduled at all, which is
+        # what the design asks for: there is nothing honest to test it on yet.
+        return _least_practised_first(db, card.user_id, items)
     else:
         sense = db.get(Sense, card.sense_id)
         stmt = (
@@ -316,19 +462,55 @@ def offerable(item: Item) -> bool:
     return item.exercise_type not in AUDIBLE or audio.available()
 
 
+def _introduction_budget(db: Session, user_id: int, settings: dict) -> int:
+    """How many new cards today still allows.
+
+    Counted from `card.created_at` rather than from a per-call counter. The
+    learner can rebuild the session as often as they like — the review page's
+    "Another round" button does exactly that — and a counter that lives inside
+    one call grants a fresh ten every time it is pressed, which is criterion 15
+    failing in the one situation it names.
+    """
+    introduced = db.scalar(
+        select(func.count())
+        .select_from(Card)
+        .where(
+            Card.user_id == user_id,
+            Card.created_at >= start_of_user_day(settings),
+        )
+    )
+    return max(0, DAILY_NEW_CAP - (introduced or 0))
+
+
 def build_session(
     db: Session, user_id: int, settings: dict, limit: int = 20
 ) -> tuple[list[Item], dict]:
-    """Compose the day's queue: debt, then remediation, then new."""
+    """Compose the day's queue: debt, then remediation, then new.
+
+    The three segments are *composed* in the order debt, new, remediation, and
+    *served* in the order debt, remediation, new. That is not a contradiction and
+    it is the whole point: remediation has an appetite for the entire session and
+    no natural stopping point, so it is composed last, against whatever room the
+    other two left. Composed second, as it reads, it fills the queue to `limit`
+    from the weakest node every single day, `len(picked) < limit` is never true
+    again after day one, and introduction stops permanently on day two — the
+    learner then answers the same twenty items forever, meets no grammar, and
+    unlocks nothing. Raising `limit` only moves which twenty.
+    """
     horizon = end_of_user_day(settings)
-    picked: list[Item] = []
+    debt_items: list[Item] = []
+    remedial: list[Item] = []
+    new_items: list[Item] = []
     seen: set[int] = set()
 
-    def add(item: Item) -> bool:
-        if item.id in seen or len(picked) >= limit:
+    def total() -> int:
+        return len(debt_items) + len(remedial) + len(new_items)
+
+    def add(bucket: list[Item], item: Item) -> bool:
+        if item.id in seen or total() >= limit:
             return False
         seen.add(item.id)
-        picked.append(item)
+        bucket.append(item)
         return True
 
     # 1 — debt
@@ -337,33 +519,21 @@ def build_session(
         .where(Card.user_id == user_id, Card.due_at <= horizon)
         .order_by(Card.due_at)
     ).all()
+    known = known_lexemes(db, user_id)
     for card in due:
-        for item in _items_for_card(db, card):
+        for item in _items_for_card(db, card, known):
             if not offerable(item):
                 continue
-            if add(item):
+            if add(debt_items, item):
                 break
     debt_total = len(due)
-    debt_served = len(picked)
+    debt_served = len(debt_items)
 
-    # 2 — remediation, only once debt is exhausted
-    if len(picked) < limit:
-        weak = weakest_node(db, user_id)
-        if weak is not None:
-            for item in db.scalars(select(Item).where(Item.node_id == weak.id)):
-                if not offerable(item):
-                    continue
-                # `add` returns False both when the session is full and when the
-                # item is already picked. Only the first is a reason to stop —
-                # treating the second as one ends remediation on its first
-                # overlap with the debt queue, which is the common case.
-                if len(picked) >= limit:
-                    break
-                add(item)
-
-    # 3 — new, and only while nothing is overdue
+    # 2 — new, and only while nothing is overdue. Claims its room before
+    # remediation is allowed to ask for any.
     introduced = 0
-    if not due and len(picked) < limit:
+    if not due:
+        budget = _introduction_budget(db, user_id, settings)
         started = _started_referents(db, user_id)
         sense_by_form = _sense_by_form(db)
         # Round-robin across nodes rather than draining them in turn. Node order
@@ -375,10 +545,11 @@ def build_session(
             for node in db.scalars(select(Node))
             if is_unlocked(db, user_id, node)
         ]
-        while pools and introduced < DAILY_NEW_CAP and len(picked) < limit:
+        while pools and introduced < budget and total() < limit:
+            progressed = False
             for entry in list(pools):
                 node, pool = entry
-                if introduced >= DAILY_NEW_CAP or len(picked) >= limit:
+                if introduced >= budget or total() >= limit:
                     break
                 for item in pool:
                     if not offerable(item):
@@ -392,15 +563,45 @@ def build_session(
                     # chance through remediation.
                     if refs and refs <= started:
                         continue
-                    if add(item):
+                    # The budget is counted in cards, which is what DAILY_NEW_CAP
+                    # names and what the day actually costs: the first item of a
+                    # stratum introduces both a form and a rule, later ones only
+                    # a form. An item that does not fit waits for tomorrow rather
+                    # than being allowed to overshoot the cap.
+                    cost = len(refs - started) or 1
+                    if cost > budget - introduced:
+                        continue
+                    if add(new_items, item):
                         started |= refs
-                        introduced += 1
+                        introduced += cost
+                        progressed = True
                     break
                 else:
                     pools.remove(entry)
+            # Every remaining pool held only items too expensive for what is left
+            # of the budget. Without this the outer loop spins on them forever.
+            if not progressed:
+                break
 
-    return picked, {
+    # 3 — remediation, filling whatever debt and introduction left over.
+    if total() < limit:
+        weak = weakest_node(db, user_id)
+        if weak is not None:
+            for item in db.scalars(select(Item).where(Item.node_id == weak.id)):
+                if not offerable(item):
+                    continue
+                # `add` returns False both when the session is full and when the
+                # item is already picked. Only the first is a reason to stop —
+                # treating the second as one ends remediation on its first
+                # overlap with the debt queue, which is the common case.
+                if total() >= limit:
+                    break
+                add(remedial, item)
+
+    return debt_items + remedial + new_items, {
         "debt_total": debt_total,
         "debt_served": debt_served,
+        #: Cards, not items — the unit DAILY_NEW_CAP is spent in.
         "introduced": introduced,
+        "introduced_items": len(new_items),
     }

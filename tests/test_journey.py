@@ -11,6 +11,7 @@ calls the API makes, so a learner who cannot progress produces a red test.
 
 from __future__ import annotations
 
+import random
 import warnings
 from datetime import UTC, datetime, timedelta
 
@@ -74,6 +75,12 @@ def advance_one_day(db):
             state["due"] = (datetime.fromisoformat(state["due"]) - day).isoformat()
         card.fsrs_state_json = state
         card.due_at -= day
+        # The daily introduction budget is counted from this column. A helper
+        # that moves every other clock but leaves it alone pins every card in
+        # "today" forever, the budget reads as permanently spent, and the test
+        # measures the harness rather than the composer.
+        if card.created_at is not None:
+            card.created_at -= day
     for attempt in db.scalars(select(Attempt)):
         attempt.created_at -= day
     db.commit()
@@ -88,6 +95,8 @@ def _let_time_pass(db, days: int = 1):
     later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=days)
     for card in db.scalars(select(Card)):
         card.due_at = later
+        if card.created_at is not None:
+            card.created_at -= timedelta(days=days)
     for attempt in db.scalars(select(Attempt)):
         attempt.created_at -= timedelta(days=days)
     db.commit()
@@ -704,9 +713,13 @@ def schedule_cards(db, user, item):
 
 
 def _defer_everything(db):
+    """Push every card far into the future, and move yesterday's introductions
+    into yesterday so the next call gets a fresh daily budget."""
     later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=90)
     for card in db.scalars(select(Card)):
         card.due_at = later
+        if card.created_at is not None:
+            card.created_at -= timedelta(days=1)
     db.commit()
 
 
@@ -778,4 +791,191 @@ def test_listening_items_are_currently_unreachable(db, user, monkeypatch):
     assert offered == 0, (
         "listening items are now reachable — delete this test and assert the "
         "behaviour you want instead"
+    )
+
+
+# ------------------------------------------------- pacing, measured not assumed
+# `scripts/journey_sim.py` is the instrument; these are the floors it establishes.
+# The bounds are deliberately far below what the composer reaches today. They
+# exist to catch the class of regression, not to pin a number that will move.
+
+
+def _wrong_form(db, item, rng):
+    """Another cell of the same paradigm — a mistake, not gibberish.
+
+    Nonsense classifies as `UNANALYSABLE` and routes to different cards than the
+    errors learners actually make, so the debt it produces would not resemble a
+    learner's debt. Debt is what criterion 9 blocks new material on, which makes
+    this the difference between simulating a learner and simulating a cat.
+    """
+    if item.target_form_id is not None:
+        form = db.get(Form, item.target_form_id)
+        if form is not None:
+            others = [
+                f.surface
+                for f in db.scalars(
+                    select(Form).where(Form.lexeme_id == form.lexeme_id)
+                )
+                if f.surface != form.surface
+            ]
+            if others:
+                return rng.choice(others)
+    return "xxx"
+
+
+def _clear_debt(db):
+    """Nothing due any more, but still the same day.
+
+    Deliberately does not touch `created_at`: this models the learner finishing a
+    round and pressing "Another round", which is the exact situation criterion 15
+    is about.
+    """
+    later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
+    for card in db.scalars(select(Card)):
+        card.due_at = later
+    db.commit()
+
+
+def test_remediation_does_not_starve_new_material(db, user):
+    """The middle segment must not be allowed to eat the whole session.
+
+    This is the test whose absence let the product ship unusable with the suite
+    green. Every other longitudinal test answers *correctly* — which leaves the
+    error table empty, `weakest_node` returning None, and the remediation segment
+    never executing at all. The defect lived in a branch no test entered.
+
+    One wrong answer turns it on. Composed second, as the design reads, it filled
+    the queue to `limit` from the weakest node every single day, so
+    `len(picked) < limit` was never true again and introduction stopped for good
+    on day two. Measured on the code this replaces: twenty distinct items over
+    thirty days, every one of them multiple choice, no grammar, nothing unlocked,
+    while the learner answered several hundred questions.
+    """
+    from pl.session import weakest_node
+
+    rng = random.Random(7)
+    seen: set[int] = set()
+    introduced_after_the_first_day = 0
+
+    for day in range(1, 31):
+        picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+        if day > 1:
+            introduced_after_the_first_day += stats["introduced_items"]
+        for item in picked:
+            seen.add(item.id)
+            correct = rng.random() < 0.85
+            answer(db, user, item, None if correct else _wrong_form(db, item, rng))
+        evaluate_unlocks(db, user.id)
+        advance_one_day(db)
+
+    # The premise. Without errors there is no weakest node, remediation never
+    # runs, and everything below would pass while asserting nothing.
+    assert weakest_node(db, user.id) is not None, (
+        "no error events were recorded: the remediation segment never executed, "
+        "so this test proved nothing"
+    )
+    assert introduced_after_the_first_day > 0, (
+        "introduction stopped after day one — remediation is taking the session"
+    )
+    assert len(seen) > 40, (
+        f"a learner studying every day for a month met {len(seen)} distinct items"
+    )
+
+
+def test_the_daily_cap_is_not_re_granted_by_asking_again(db, user):
+    """Criterion 15: honoured "even when the learner keeps asking for more".
+
+    The review page's "Another round" button reloads the page, which rebuilds the
+    session. A cap enforced per *call* hands out a fresh ten every time it is
+    pressed, and the debt spike the cap exists to prevent arrives three days
+    later anyway.
+    """
+    from pl.session import DAILY_NEW_CAP
+
+    introduced = 0
+    for _ in range(6):
+        picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+        introduced += stats["introduced"]
+        for item in picked:
+            answer(db, user, item)
+        _clear_debt(db)
+
+    assert introduced > 0, "nothing was introduced at all; the test proves nothing"
+    assert introduced <= DAILY_NEW_CAP, (
+        f"{introduced} new cards were introduced in a single day against a cap "
+        f"of {DAILY_NEW_CAP} — the cap is being re-granted per call"
+    )
+
+
+# ------------------------------------------------------- the pattern-card draw
+
+
+def _stratum_with_several_lexemes(db):
+    """A pattern whose items cover more than one lexeme, or there is nothing to
+    rotate between and the test would pass vacuously."""
+    for pattern in db.scalars(select(Pattern)):
+        items = list(db.scalars(select(Item).where(Item.pattern_id == pattern.id)))
+        lexemes = {
+            db.get(Form, i.target_form_id).lexeme_id
+            for i in items
+            if i.target_form_id is not None
+        }
+        if len(lexemes) >= 2:
+            return pattern, items, lexemes
+    raise AssertionError("no stratum carries two lexemes")
+
+
+def test_a_pattern_card_draws_only_on_vocabulary_the_learner_has_met(db, user):
+    """§"Pattern cards are stratified": the draw is intersected with what the
+    learner knows.
+
+    A rule card drawn from the whole stratum tests the locative on a noun the
+    learner has never seen — and the routing table scores that failure against
+    the *rule*, so the learner is marked down on grammar for a vocabulary gap
+    and the rule card's schedule is corrupted by it.
+    """
+    from pl import schedule
+    from pl.schedule import PATTERN
+    from pl.session import _items_for_card
+
+    pattern, items, lexemes = _stratum_with_several_lexemes(db)
+    card = schedule.card_for(db, user.id, PATTERN, pattern.id)
+    db.commit()
+
+    assert _items_for_card(db, card, set()) == [], (
+        "a pattern card drew items when the learner had met none of its lexemes"
+    )
+
+    one = sorted(lexemes)[0]
+    drawn = _items_for_card(db, card, {one})
+    assert drawn, "meeting a lexeme in the stratum drew nothing"
+    for item in drawn:
+        assert db.get(Form, item.target_form_id).lexeme_id == one, (
+            "the draw reached outside the lexemes the learner has met"
+        )
+
+
+def test_a_pattern_card_does_not_test_the_same_word_every_time(db, user):
+    """An unordered draw returns insertion order for the life of the account.
+
+    The debt loop takes the first offerable item, so the rule card is tested on
+    one noun forever while claiming — and being credited for — generalisation
+    across its whole stratum. That claim is what makes "80% of the node's pattern
+    cards" a meaningful threshold, so a frozen draw quietly falsifies the gate.
+    """
+    from pl import schedule
+    from pl.schedule import PATTERN
+    from pl.session import _items_for_card
+
+    pattern, items, lexemes = _stratum_with_several_lexemes(db)
+    card = schedule.card_for(db, user.id, PATTERN, pattern.id)
+    db.commit()
+
+    first = _items_for_card(db, card, lexemes)[0]
+    answer(db, user, first)
+    second = _items_for_card(db, card, lexemes)[0]
+
+    assert second.id != first.id, (
+        f"the stratum served {first.expected_answer!r} twice running, with "
+        f"{len(lexemes)} lexemes available to draw from"
     )

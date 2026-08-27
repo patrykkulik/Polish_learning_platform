@@ -675,6 +675,14 @@ debt. Both need an explicit ordering to be implementable.
      injected only after debt is exhausted.
   3. **New** — items from unlocked, unstarted nodes, **only if debt is clear** and the daily goal is
      not yet met.
+- **Design choice, added after measurement: the segments are *served* in that order but *composed*
+  debt → new → remediation.** This is not a contradiction, and stating it as one ordering is what
+  made the composer unusable for a revision. Remediation has an appetite for the entire session and
+  no natural stopping point — the weakest node always has more items — so whichever segment is
+  composed after it receives nothing. Composed last, against the room the other two left, it still
+  fills every session that debt and introduction do not; composed second, as this list reads, it
+  starves introduction permanently from day two. See §"Known defects" for the measurement. **A
+  segment with no budget is a segment that takes everything.**
 - **Design choice: a daily new-card cap, default 10, configurable.** Without one, an enthusiastic
   first evening creates a debt spike three days later that reads as punishment for engagement, and it
   is the standard way self-hosted SRS deployments fail. Acceptance criterion 15.
@@ -966,40 +974,78 @@ list: `session.js` now checks every response and renders a failure the learner c
 `pl/api.py` has tests. Everything below was re-verified against the code at this revision — the
 remaining entries are remaining because they are still true, not because nobody looked.
 
+**Corrected at this revision: what the "day-four plateau" actually was**
+
+Every revision up to this one carried a defect reading *"the learner stops meeting new material on
+day four — criterion 9 forbids introducing anything while a review is overdue"*. **That diagnosis was
+wrong, and it was wrong in the way design documents usually are: deduced from the rules rather than
+measured.** Simulation shows debt sitting at *zero* on most of the days when nothing was introduced,
+so criterion 9 cannot have been what stopped it.
+
+The real cause was the **remediation segment, which had no budget**. It filled the session to `limit`
+from the weakest node every day, so the introduction segment's `len(picked) < limit` guard was never
+true again after day one. Introduction did not decay over four days — it stopped on day two and
+stayed stopped, permanently, and raising `limit` only changed which twenty items the learner was
+stuck on. Ablating remediation alone restored it, which is the proof. Measured at 85% accuracy over
+sixty days: 1,190 questions answered, **20 distinct items**, no grammar, nothing unlocked.
+
+**Fixed.** The three segments are now *composed* debt → new → remediation and *served* debt →
+remediation → new, so remediation is only ever offered the room the other two left. The same sixty
+days now reach about 80 distinct items and 58 of 76 lexemes — a scale rather than a fingerprint, as
+the simulation's totals move a percent or two between runs. Pinned by
+`test_remediation_does_not_starve_new_material`, which fails on the old ordering with
+*"introduction stopped after day one"*.
+
+The lesson is procedural rather than technical, and it is why `scripts/journey_sim.py` is now
+committed: **every pacing claim in this document was an inference until something ran the loop.**
+Three longitudinal tests were green throughout, because all of them answer *correctly* — which leaves
+the error table empty, `weakest_node` returning `None`, and the defective segment never executing at
+all. A test that cannot fail is not evidence.
+
 **Would stop a real learner**
 
-- **The learner stops meeting new material on day four.** Criterion 9 forbids introducing anything
-  while a review is overdue. Once enough cards exist for at least one to fall due every day, that
-  condition is permanently true: `introduced` runs 10, 0, 10, and then 0 for good. The learner meets
-  about twenty items and the curriculum stops opening. This is the composition rules working exactly
-  as specified — which is what makes it a design defect rather than a bug. Criterion 9 needs a
-  bound (a debt threshold, or a floor of new items that outranks it), and that is a decision about
-  what the product is for, not a patch.
+- **Introduction is gated on a clear debt queue, and that is now the binding constraint.** With
+  remediation fixed, new material arrives only on days that start with nothing overdue: one node
+  unlocked in sixty simulated days, ~8% of the item bank met. This is criterion 9 working exactly as
+  specified, which is what makes it a design decision rather than a bug. Criterion 9 needs a bound (a
+  debt threshold, or a floor of new items that outranks it), and choosing one is a decision about
+  what the product is for. Measure with `scripts/journey_sim.py` before changing it, and again after.
 - **Listening-dictation items are unreachable.** All 26 exist, are built, are audible and grade
   correctly, and are never offered. Each shares both of its referents with the cloze built from the
   same sentence, and debt serves the lowest-id item, which is always the cloze. Pinned by
   `test_listening_items_are_currently_unreachable`, which is written to be deleted by whoever makes
   them reachable.
-- `DAILY_NEW_CAP` is enforced per *call*, not per day, and the review screen ships an "Another round"
-  button that reloads the page — so the cap grants another ten every time it is pressed. Fixing it
-  needs a persistent `Card.created_at`.
-- The streak's absence handling re-applies on every non-advancing `complete()` call, draining freezes
-  and then breaking a streak the freezes had just saved.
-- The streak's daily-goal condition trusts a client-supplied query parameter, on a server that
-  already holds the authoritative count in `attempt`.
-- The pattern-card draw ignores the known-lexeme intersection §"Pattern cards are stratified"
-  specifies, and is unordered, so it draws the same lexeme every time.
+
+**Fixed at this revision**
+
+- ~~`DAILY_NEW_CAP` is enforced per *call*, not per day.~~ `card.created_at` now records the day a
+  referent was introduced and the budget is read from it, so the "Another round" button no longer
+  grants another ten. The cap counts **cards**, the unit it is named for: the first item of a stratum
+  introduces a form *and* a rule and costs two, later ones cost one.
+- ~~The streak's absence handling re-applies on every non-advancing `complete()` call.~~
+  `streak.absence_settled_on` makes the reckoning idempotent within a day, so a gap is paid for once
+  however many rounds the learner finishes on the day they return.
+- ~~The streak's daily-goal condition trusts a client-supplied query parameter.~~ Counted from
+  `attempt`; `POST /api/session/complete` no longer accepts a count at all.
+- ~~The pattern-card draw ignores the known-lexeme intersection and is unordered.~~ Intersected with
+  the lexemes the learner holds a lexical or morph card for, and ordered by how often each item has
+  been answered — so the stratum rotates without a random seed, and the composer stays deterministic.
 
 **Unimplemented, not merely defective**
 
 - Criterion 18's promotion queue. `item_variant` ships as dead schema.
-- Criterion 14's decaying mastery display. `/api/graph` returns no mastery figure despite its
-  docstring, and nothing consumes it.
+- ~~Criterion 14's decaying mastery display.~~ **Built at this revision.** `/api/graph` returns
+  `mastery` — mean current retrievability across the node's strata, which decays between sessions —
+  alongside `mastered`, the latching gate, which does not. `GET /progress` renders both, with
+  per-node strata held, vocabulary met, cards due and a thirty-day retention curve. The split *is*
+  the criterion: one number cannot do both jobs, because a bar drawn from the gate can only ever
+  rise, and a gate driven by retrievability would re-lock half the graph after a holiday.
 
 **Testing and compatibility**
 
-- `pl/streak.py` has no tests, so criterion 12 is unasserted. `pl/api.py` now has nine, covering
-  criterion 17 and the audio endpoint's failure modes.
+- ~~`pl/streak.py` has no tests, so criterion 12 is unasserted.~~ `tests/test_streak.py` covers both
+  conditions, the freeze arithmetic, the absence reckoning and the timezone boundary. `pl/api.py` now
+  has thirteen tests, covering criteria 17 and 14 and the audio endpoint's failure modes.
 - Criterion 13's unlock test inserts the latch row by hand and reads it back; criterion 16's
   assertion compares a row to itself — `item.expected_answer` was assigned from `form.surface` at
   build time, so checking one against the other cannot fail. Both builders now run it, which makes

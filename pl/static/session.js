@@ -242,9 +242,10 @@ function next() {
 async function finish() {
   let data;
   try {
-    data = await request(`/api/session/complete?items_completed=${completed}`, {
-      method: "POST",
-    });
+    // No count is sent. The server holds the authoritative one in `attempt`,
+    // and a client that reports its own is a client that can award itself a
+    // streak.
+    data = await request("/api/session/complete", { method: "POST" });
   } catch (e) {
     return fail(e.message, finish);
   }

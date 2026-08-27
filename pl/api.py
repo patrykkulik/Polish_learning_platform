@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 from pl import db as database
 from pl import session as composer
@@ -32,7 +32,7 @@ from pl.content import ingest
 from pl.domain import AUDIBLE, MULTI_SLOT, ExpectedSlot
 from pl.domain import Form as DomainForm
 from pl.grade import classify, classify_sentence, explain
-from pl.models import AppUser, Attempt, Form, Item, ItemSlot, Lexeme, Node
+from pl.models import AppUser, Attempt, Form, Item, ItemSlot, Lexeme, Node, Review
 from pl.schedule import apply_diagnosis
 
 log = logging.getLogger(__name__)
@@ -234,15 +234,18 @@ def submit(payload: Submission):
 
 
 @app.post("/api/session/complete")
-def complete(items_completed: int = 0):
-    """End of session: evaluate unlocks, then the streak."""
+def complete():
+    """End of session: evaluate unlocks, then the streak.
+
+    Takes no count. How many items were answered today is a fact the server
+    already holds in `attempt`; accepting it as a query parameter let the client
+    award itself a streak by typing a number into the URL.
+    """
     db = database.session()
     try:
         user = _user(db)
         unlocked = composer.evaluate_unlocks(db, user.id)
-        row = streaks.record_activity(
-            db, user.id, user.settings_json, items_completed
-        )
+        row = streaks.record_activity(db, user.id, user.settings_json)
         return {
             "unlocked": unlocked,
             "streak": row.current,
@@ -252,23 +255,83 @@ def complete(items_completed: int = 0):
         db.close()
 
 
+def _retention_curve(db, user_id: int, days: int = 30) -> list[dict]:
+    """Share of reviews the learner actually recalled, by day.
+
+    The figure that survives the streak breaking. A streak counts appearances; a
+    retention curve counts what stayed learned, which is the thing the product
+    claims to deliver.
+
+    `Again` is the only failure. A `Hard` is a recall — it is what a dropped
+    diacritic scores, and the learner who wrote `robie` for `robię` had the
+    grammar and missed the keyboard. Counting that as forgetting would make the
+    curve a measure of typing.
+    """
+    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    rows = db.execute(
+        select(
+            func.date(Attempt.created_at),
+            func.count(Review.id),
+            func.sum(case((Review.rating > 1, 1), else_=0)),
+        )
+        .join(Review, Review.attempt_id == Attempt.id)
+        .where(Attempt.user_id == user_id, Attempt.created_at >= since)
+        .group_by(func.date(Attempt.created_at))
+        .order_by(func.date(Attempt.created_at))
+    ).all()
+    return [
+        {"day": str(day), "reviews": int(total), "recalled": int(recalled or 0)}
+        for day, total, recalled in rows
+    ]
+
+
+@app.get("/progress", response_class=HTMLResponse)
+def progress_page(request: Request):
+    return templates.TemplateResponse(request, "progress.html", {})
+
+
 @app.get("/api/graph")
 def graph():
-    """The skill graph with per-node mastery, for the progress view."""
+    """The skill graph with per-node mastery, for the progress view.
+
+    Each node carries two different figures on purpose. `mastered` is the unlock
+    gate's own answer, read off a high-water mark, so it never falls. `mastery`
+    is current retrievability averaged across the node's strata, so it decays
+    between sessions — criterion 14 asks for exactly that split, and showing the
+    gate's figure as the progress bar would draw a line that can only go up.
+    """
     db = database.session()
     try:
         user = _user(db)
         out = []
         for node in db.scalars(select(Node)):
+            detail = composer.node_mastery(db, user.id, node)
             out.append(
                 {
                     "key": node.key,
                     "title": node.title,
                     "type": node.type,
                     "unlocked": composer.is_unlocked(db, user.id, node),
+                    "mastered": detail["strata"] > 0
+                    and composer.is_mastered(db, user.id, node),
+                    #: Decays with time. The progress bar.
+                    "mastery": round(detail["retention"], 4),
+                    "strata": detail["strata"],
+                    "started": detail["started"],
+                    "mastered_strata": detail["mastered"],
                     "explanation": node.explanation_md,
                 }
             )
-        return {"nodes": out}
+
+        met = composer.known_lexemes(db, user.id)
+        return {
+            "nodes": out,
+            "vocabulary": {
+                "met": len(met),
+                "total": db.scalar(select(func.count()).select_from(Lexeme)),
+            },
+            "retention_curve": _retention_curve(db, user.id),
+            "progress": streaks.progress(db, user.id, user.settings_json),
+        }
     finally:
         db.close()

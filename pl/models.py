@@ -252,6 +252,14 @@ class Card(Base):
 
     fsrs_state_json: Mapped[dict] = mapped_column(JSON)
     due_at: Mapped[datetime] = mapped_column(DateTime)
+    #: When the learner first met this referent. The daily introduction cap is a
+    #: property of the *day*, not of the request, and a card row is the only
+    #: durable record that a referent was introduced — without this column the
+    #: cap is re-granted every time the session is rebuilt.
+    #:
+    #: Nullable so an existing database opens without a migration. A card with no
+    #: timestamp predates the budget and correctly counts against no day.
+    created_at: Mapped[datetime | None] = mapped_column(DateTime)
     reps: Mapped[int] = mapped_column(default=0)
     lapses: Mapped[int] = mapped_column(default=0)
     #: Monotone high-water mark of FSRS stability, in days. The unlock gate reads
@@ -312,3 +320,8 @@ class Streak(Base):
     longest: Mapped[int] = mapped_column(default=0)
     freezes: Mapped[int] = mapped_column(default=0)
     last_completed_on: Mapped[date | None] = mapped_column(Date)
+    #: The day an absence was last reckoned against the freeze balance. A gap is
+    #: paid for once, not once per `complete()` call — without this, finishing a
+    #: session twice on the day a learner returns spends the freezes twice and
+    #: then breaks the streak those freezes had just saved.
+    absence_settled_on: Mapped[date | None] = mapped_column(Date)

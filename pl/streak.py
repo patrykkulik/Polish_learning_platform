@@ -22,8 +22,13 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pl.models import Card, Streak
-from pl.session import MASTERY_STABILITY_DAYS, end_of_user_day, user_today
+from pl.models import Attempt, Card, Streak
+from pl.session import (
+    MASTERY_STABILITY_DAYS,
+    end_of_user_day,
+    start_of_user_day,
+    user_today,
+)
 
 #: Held at most two, earned one per ten advanced days.
 MAX_FREEZES = 2
@@ -48,14 +53,45 @@ def debt_remaining(db: Session, user_id: int, settings: dict) -> int:
     )
 
 
-def _apply_absence(row: Streak, today: date) -> None:
+def items_completed_today(db: Session, user_id: int, settings: dict) -> int:
+    """Distinct items the learner has actually answered today.
+
+    Read from `attempt`, never taken from the caller. This count is half of the
+    condition that advances the streak, and the client has no business being the
+    one to report it — the server already holds the authoritative record, and a
+    query parameter is an assertion rather than evidence.
+
+    Distinct rather than total: answering the same item twice in a day is one
+    item met, not two.
+    """
+    return db.scalar(
+        select(func.count(func.distinct(Attempt.item_id))).where(
+            Attempt.user_id == user_id,
+            Attempt.created_at >= start_of_user_day(settings),
+            Attempt.created_at < end_of_user_day(settings),
+        )
+    )
+
+
+def _apply_absence(db: Session, row: Streak, today: date) -> None:
     """Spend freezes across missed days, then break the streak.
 
     Freezes are consumed silently rather than prompting: a learner returning
     after a gap should find their streak intact, not a decision to make.
+
+    Settled at most once per day. `complete()` is a plain POST that the review
+    page fires at the end of every round, and a learner who returns from a gap
+    and does two rounds would otherwise pay for the same absence twice — the
+    second reckoning drains the freezes the first one spent correctly, and then
+    breaks the streak those freezes had just saved.
     """
     if row.last_completed_on is None:
         return
+    if row.absence_settled_on == today:
+        return
+    row.absence_settled_on = today
+    db.flush()
+
     missed = (today - row.last_completed_on).days - 1
     if missed <= 0:
         return
@@ -65,9 +101,7 @@ def _apply_absence(row: Streak, today: date) -> None:
         row.current = 0
 
 
-def record_activity(
-    db: Session, user_id: int, settings: dict, items_completed: int
-) -> Streak:
+def record_activity(db: Session, user_id: int, settings: dict) -> Streak:
     """Advance the streak if, and only if, both conditions hold today."""
     row = _streak(db, user_id)
     today = user_today(settings)
@@ -75,10 +109,10 @@ def record_activity(
     if row.last_completed_on == today:
         return row
 
-    _apply_absence(row, today)
+    _apply_absence(db, row, today)
 
     goal = settings.get("daily_goal_items", 20)
-    goal_met = items_completed >= goal
+    goal_met = items_completed_today(db, user_id, settings) >= goal
     debt_clear = debt_remaining(db, user_id, settings) == 0
 
     if goal_met and debt_clear:

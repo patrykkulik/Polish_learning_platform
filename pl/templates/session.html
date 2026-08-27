@@ -65,6 +65,8 @@
   .brand span { color: var(--accent); }
   .stat { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .stat b { color: var(--ink); font-weight: 650; }
+  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a.link:hover { border-bottom-color: var(--accent); }
 
   main {
     flex: 1; width: 100%; max-width: 44rem;
@@ -162,6 +164,7 @@
     <div class="stat">streak <b id="s-streak">–</b></div>
     <div class="stat">due <b id="s-debt">–</b></div>
     <div class="stat">retained <b id="s-retained">–</b></div>
+    <a class="stat link" href="/progress">progress</a>
   </div>
 </header>
 
