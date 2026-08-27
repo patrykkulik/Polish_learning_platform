@@ -32,7 +32,17 @@ from pl.content import ingest
 from pl.domain import AUDIBLE, MULTI_SLOT, ExpectedSlot
 from pl.domain import Form as DomainForm
 from pl.grade import classify, classify_sentence, explain
-from pl.models import AppUser, Attempt, Form, Item, ItemSlot, Lexeme, Node, Review
+from pl.models import (
+    AppUser,
+    Attempt,
+    Card,
+    Form,
+    Item,
+    ItemSlot,
+    Lexeme,
+    Node,
+    Review,
+)
 from pl.schedule import apply_diagnosis
 
 log = logging.getLogger(__name__)
@@ -233,6 +243,52 @@ def submit(payload: Submission):
         db.close()
 
 
+#: Round numbers worth naming, spaced so that early encouragement is frequent and
+#: later ones are rare enough to mean something.
+RETAINED_MILESTONES = (10, 25, 50, 100, 250, 500)
+VOCABULARY_MILESTONES = (10, 25, 50, 100, 250)
+STREAK_MILESTONES = (3, 7, 14, 30, 60, 100)
+
+
+def _standing(value: int, thresholds: tuple[int, ...]) -> dict:
+    reached = max((t for t in thresholds if value >= t), default=0)
+    return {
+        "value": value,
+        "reached": reached,
+        "next": next((t for t in thresholds if value < t), None),
+    }
+
+
+def _milestones_reached(db, user_id: int, streak_current: int) -> dict:
+    """Where the learner stands against the next round number.
+
+    Deliberately *where they stand* rather than *what they crossed today*.
+    Announcing a crossing needs a column recording which milestones have already
+    been announced, and a milestone announced twice is worse than one stated
+    plainly — it tells the learner the number is decorative. What this returns is
+    true every time it is rendered, which is the property worth having.
+
+    Three separate counts rather than one score, for the same reason `progress`
+    returns retention beside the streak: they answer different questions, and a
+    single number would hide whichever one is currently bad.
+    """
+    retained = db.scalar(
+        select(func.count())
+        .select_from(Card)
+        .where(
+            Card.user_id == user_id,
+            Card.stability_max >= composer.MASTERY_STABILITY_DAYS,
+        )
+    )
+    return {
+        "retained": _standing(retained, RETAINED_MILESTONES),
+        "vocabulary": _standing(
+            len(composer.known_lexemes(db, user_id)), VOCABULARY_MILESTONES
+        ),
+        "streak": _standing(streak_current, STREAK_MILESTONES),
+    }
+
+
 @app.post("/api/session/complete")
 def complete():
     """End of session: evaluate unlocks, then the streak.
@@ -244,11 +300,25 @@ def complete():
     db = database.session()
     try:
         user = _user(db)
-        unlocked = composer.evaluate_unlocks(db, user.id)
+        newly = composer.evaluate_unlocks(db, user.id)
         row = streaks.record_activity(db, user.id, user.settings_json)
         return {
-            "unlocked": unlocked,
+            # The node itself, not its primary key. Unlocking is the one moment
+            # in the loop where the course visibly opens up, and it was reaching
+            # the learner as the string "N01" — the database's name for the
+            # thing, which tells them nothing about what they just earned.
+            "unlocked": [
+                {
+                    "key": node.key,
+                    "title": node.title,
+                    "type": node.type,
+                    "explanation": node.explanation_md,
+                }
+                for key in newly
+                if (node := db.scalar(select(Node).where(Node.key == key)))
+            ],
             "streak": row.current,
+            "milestones": _milestones_reached(db, user.id, row.current),
             "progress": streaks.progress(db, user.id, user.settings_json),
         }
     finally:
@@ -324,6 +394,7 @@ def graph():
             )
 
         met = composer.known_lexemes(db, user.id)
+        figures = streaks.progress(db, user.id, user.settings_json)
         return {
             "nodes": out,
             "vocabulary": {
@@ -331,7 +402,8 @@ def graph():
                 "total": db.scalar(select(func.count()).select_from(Lexeme)),
             },
             "retention_curve": _retention_curve(db, user.id),
-            "progress": streaks.progress(db, user.id, user.settings_json),
+            "milestones": _milestones_reached(db, user.id, figures["streak"]),
+            "progress": figures,
         }
     finally:
         db.close()

@@ -252,17 +252,73 @@ async function finish() {
   setProgress(data.progress);
   rail.style.width = "100%";
 
-  const unlocked = data.unlocked.length
-    ? `<p>Unlocked: <strong>${data.unlocked.map(escapeHtml).join(", ")}</strong></p>`
-    : "";
   stage.innerHTML = `
     <div class="done">
       <h2>Session finished</h2>
       <p>${completed} answered · streak ${data.streak} · ${data.progress.debt} still due</p>
-      ${unlocked}
-      <p><button class="primary" onclick="location.reload()">Another round</button></p>
+      ${renderUnlocks(data.unlocked || [])}
+      ${renderMilestones(data.milestones)}
+      <p>
+        <button class="primary" onclick="location.reload()">Another round</button>
+        <a class="link" href="/progress">See your progress</a>
+      </p>
     </div>
   `;
+}
+
+/* Unlocking is the one moment in the loop where the course visibly opens up.
+ * It used to arrive as the string "N01" — the database's name for the thing,
+ * which tells the learner nothing about what they just earned. */
+function renderUnlocks(unlocked) {
+  if (!unlocked.length) return "";
+  return unlocked
+    .map(
+      (n) => `
+      <div class="unlock">
+        <div class="label">New skill unlocked</div>
+        <h3>${escapeHtml(n.title)}</h3>
+        ${n.explanation ? `<p class="what">${escapeHtml(firstLine(n.explanation))}</p>` : ""}
+      </div>`
+    )
+    .join("");
+}
+
+/* The explanation is Markdown written for the lesson screen. The unlock moment
+ * wants one sentence, not the whole thing. */
+function firstLine(md) {
+  const text = String(md).replace(/[*_`#]/g, "").trim();
+  const stop = text.indexOf(". ");
+  return stop === -1 ? text.split("\n")[0] : text.slice(0, stop + 1);
+}
+
+/* Where the learner stands against the next round number — never "you just
+ * crossed", which the server cannot honestly claim without recording what it
+ * has already announced. Only the nearest of the three is shown: three progress
+ * bars at once is a dashboard, and a dashboard is not encouragement. */
+function renderMilestones(m) {
+  if (!m) return "";
+  const named = {
+    retained: ["cards remembered a week", "card remembered a week"],
+    vocabulary: ["Polish words met", "Polish word met"],
+    streak: ["days in a row", "day in a row"],
+  };
+  const open = Object.keys(named)
+    .map((k) => ({ k, ...m[k] }))
+    .filter((s) => s && s.next);
+  if (!open.length) return "";
+  // Nearest to its next threshold, proportionally.
+  open.sort((a, b) => b.value / b.next - a.value / a.next);
+  const best = open[0];
+  const [plural, singular] = named[best.k];
+  const pct = Math.min(100, Math.round((best.value / best.next) * 100));
+  return `
+    <div class="milestone">
+      <div class="rail"><i style="width:${pct}%"></i></div>
+      <p class="what">
+        <strong>${best.value}</strong> ${best.value === 1 ? singular : plural}
+        · ${best.next - best.value} to go
+      </p>
+    </div>`;
 }
 
 function escapeHtml(s) {

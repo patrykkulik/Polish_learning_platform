@@ -271,3 +271,61 @@ def test_completing_a_session_ignores_a_count_from_the_client(client):
     body = http.post("/api/session/complete?items_completed=9999").json()
     assert body["streak"] == 0, "a number in the query string bought a streak"
     assert body["progress"]["streak"] == 0
+
+
+# ------------------------------------------------------------ gamification
+
+
+def test_an_unlock_names_the_skill_rather_than_its_primary_key(client, monkeypatch):
+    """Unlocking is the one moment where the course visibly opens up.
+
+    It used to reach the learner as the string "N01" — the database's name for
+    the thing, which says nothing about what was earned. The node's own title and
+    explanation are already in the row; not sending them was the whole defect.
+    """
+    from pl.models import Node
+
+    http, Session = client
+    body = http.post("/api/session/complete").json()
+    assert body["unlocked"] == [], "a learner with no history unlocked something"
+
+    with Session() as db:
+        assert db.scalar(select(Node).where(Node.key == "N01")) is not None
+
+    # The gate itself is driven in `test_journey.py`, over the forty simulated
+    # days it actually takes. What is under test here is only what the endpoint
+    # says once a node *has* opened.
+    monkeypatch.setattr(api.composer, "evaluate_unlocks", lambda db, uid: ["N01"])
+    body = http.post("/api/session/complete").json()
+
+    assert len(body["unlocked"]) == 1
+    unlocked = body["unlocked"][0]
+    assert isinstance(unlocked, dict), (
+        f"the endpoint returned {unlocked!r} — the database's name for the node, "
+        f"which tells the learner nothing about what they just earned"
+    )
+    assert unlocked["key"] == "N01"
+    assert unlocked["title"] and unlocked["title"] != "N01"
+    assert unlocked["explanation"], "the learner is told nothing about the skill"
+
+
+def test_milestones_report_a_standing_not_a_celebration(client):
+    """Where the learner is against the next round number, and nothing louder.
+
+    Claiming they *crossed* one today would need a column recording which have
+    already been announced. Without it the honest thing is a standing, which is
+    true however many times it is rendered.
+    """
+    http, _ = client
+    for body in (
+        http.post("/api/session/complete").json(),
+        http.get("/api/graph").json(),
+    ):
+        m = body["milestones"]
+        assert set(m) == {"retained", "vocabulary", "streak"}
+        for key, standing in m.items():
+            assert set(standing) == {"value", "reached", "next"}, key
+            assert standing["value"] == 0, "a fresh learner has done nothing yet"
+            assert standing["reached"] == 0, "nothing has been reached"
+            assert standing["next"] > 0, "there is always a next target"
+            assert standing["value"] < standing["next"]

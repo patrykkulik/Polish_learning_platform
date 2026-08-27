@@ -55,9 +55,56 @@ async function load() {
 
   main.innerHTML = `
     ${renderTiles(data, p)}
+    ${renderMilestones(data.milestones)}
     ${renderCurve(data.retention_curve || [])}
     ${renderNodes(data.nodes || [])}
   `;
+}
+
+/* All three standings belong here, unlike the session-end screen which shows
+ * only the nearest. This page is where someone comes to look; that one
+ * interrupts them on the way out.
+ *
+ * Each is "where you stand", never "what you just crossed" — the server cannot
+ * honestly claim a crossing without recording which milestones it has already
+ * announced, and a milestone announced twice teaches the learner the number is
+ * decorative. */
+function renderMilestones(m) {
+  if (!m) return "";
+  const rows = [
+    ["Remembered a week", m.retained, "cards held at seven days or more"],
+    ["Words met", m.vocabulary, "distinct Polish lexemes seen"],
+    ["Days in a row", m.streak, "consecutive days both goals were met"],
+  ]
+    .filter(([, s]) => s)
+    .map(([label, s, note]) => {
+      const done = s.next === null;
+      const pct = done ? 100 : Math.min(100, Math.round((s.value / s.next) * 100));
+      const target = done
+        ? `${s.reached} — all of them`
+        : `${s.value} of ${s.next}`;
+      return `
+        <div class="ms">
+          <div class="ms-head">
+            <span class="ms-label">${escapeHtml(label)}</span>
+            <span class="ms-target">${escapeHtml(target)}</span>
+          </div>
+          <div class="meter"><i class="${done ? "done" : ""}" style="width:${pct}%"></i></div>
+          <div class="ms-note">${escapeHtml(note)}${
+            s.reached ? ` · last milestone ${s.reached}` : ""
+          }</div>
+        </div>`;
+    })
+    .join("");
+  if (!rows) return "";
+  return `
+    <section>
+      <div>
+        <h2>Milestones</h2>
+        <p class="sub">Round numbers worth passing. Nothing here expires.</p>
+      </div>
+      <div class="ms-grid">${rows}</div>
+    </section>`;
 }
 
 /* Four numbers that answer four different questions. Folding them into a single
@@ -136,7 +183,7 @@ function renderNodes(nodes) {
   const rows = nodes
     .map((n) => {
       const state = n.mastered
-        ? '<span class="pill open">mastered</span>'
+        ? '<span class="pill held">mastered</span>'
         : n.unlocked
         ? '<span class="pill open">open</span>'
         : '<span class="pill shut">locked</span>';

@@ -117,6 +117,18 @@
   }
   .pill.open { border-color: var(--good); color: var(--good); }
   .pill.shut { border-color: var(--line); color: var(--faint); }
+  /* Mastered is the one state worth a filled badge: open and locked are where
+     the learner is, mastered is something they did. */
+  .pill.held { background: var(--good); border-color: var(--good); color: var(--raised); font-weight: 650; }
+
+  /* A generous column gap: three meters at the same height read as one stripe
+     across the page when they sit closer than this. */
+  .ms-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.1rem 2.25rem; }
+  .ms { display: flex; flex-direction: column; gap: .35rem; }
+  .ms-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+  .ms-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 650; }
+  .ms-target { font-size: .85rem; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 650; }
+  .ms-note { font-size: .74rem; color: var(--faint); }
 
   .curve { display: flex; align-items: flex-end; gap: 3px; height: 5.5rem; }
   /* Each column carries its own track, so a bad day reads as a bad day rather

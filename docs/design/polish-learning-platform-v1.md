@@ -718,6 +718,27 @@ debt. Both need an explicit ordering to be implementable.
 - **Design choice:** the session screen shows retained-lexeme count and node mastery beside the
   streak, per spec §6's own caveat. Costs one query; it is the thing that survives a broken streak.
 
+### Beyond the streak: unlocks and milestones
+
+The streak, its freezes and the daily goal were the whole of the reward surface, rendered as three
+numbers in a header. Two things are added here, and both are deliberately quiet.
+
+- **The unlock moment.** `evaluate_unlocks` already computed which nodes opened at the end of a
+  session, and the API returned the bare key — the learner was told `N01`, which is the database's
+  name for the thing and says nothing about what they earned. It now returns the node itself, and the
+  session screen renders the title and the first sentence of its explanation. **Nothing was computed
+  that was not already being computed; it was being thrown away one layer from the screen.**
+- **Milestones.** Three standings — cards remembered a week, distinct words met, days in a row —
+  each against the next round number. **Deliberately a standing, never "you just crossed one."**
+  Announcing a crossing needs a column recording which milestones have already been announced, and a
+  milestone announced twice teaches the learner that the number is decorative. A standing is true
+  every time it is rendered, and costs no schema.
+- **Design choice: the session screen shows the nearest milestone only; the progress page shows all
+  three.** Three meters at the end of a session is a dashboard, and a dashboard is not encouragement.
+  The progress page is somewhere the learner chose to go, so it can afford the full picture.
+- Three counts rather than one composite score, for the same reason `progress` returns retention
+  beside the streak: they answer different questions, and a single number hides whichever is bad.
+
 ### M1 content is deterministic instantiation
 
 - **Design choice:** an M1 item is an authored **frame** × a lexeme, resolved against the `form`

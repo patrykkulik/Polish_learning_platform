@@ -154,6 +154,28 @@
 
   .done { text-align: center; padding: 3rem 1rem; color: var(--muted); }
   .done h2 { font-family: ui-serif, Georgia, serif; color: var(--ink); margin: 0 0 .5rem; }
+  .done .primary + .link { margin-left: 1rem; }
+
+  /* Unlocking is the only moment in the loop where the course visibly opens up,
+     so it is given real weight rather than a line of text. */
+  .unlock {
+    margin: 1.5rem auto; max-width: 30rem; text-align: left;
+    background: var(--good-bg); border: 1px solid var(--good);
+    border-radius: 10px; padding: 1.1rem 1.25rem;
+  }
+  .unlock .label { color: var(--good); margin-bottom: .35rem; }
+  .unlock h3 {
+    margin: 0; color: var(--ink); font-weight: 600;
+    font-family: ui-serif, Georgia, serif; font-size: 1.25rem;
+  }
+  .unlock .what { margin: .4rem 0 0; font-size: .92rem; color: var(--muted); }
+
+  /* One milestone, not three. Three progress bars is a dashboard, and a
+     dashboard is not encouragement. */
+  .milestone { margin: 1.5rem auto; max-width: 30rem; }
+  .milestone .rail { margin-bottom: .5rem; }
+  .milestone .what { margin: 0; font-size: .88rem; color: var(--muted); }
+  .milestone .what strong { color: var(--ink); font-weight: 650; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>

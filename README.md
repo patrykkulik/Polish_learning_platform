@@ -32,6 +32,15 @@ Measured while proving it:
 **M1 — the learning loop.** Single user, no auth. FSRS over three card
 populations, session composition, streak, and a review screen.
 
+**Progress and reward.** `GET /progress` shows per-node mastery that decays with
+retrievability while the unlock gate does not (criterion 14), a thirty-day
+retention curve, vocabulary met and cards due. Finishing a session names the
+skill just unlocked and the sentence describing it, rather than the node's
+primary key, and shows the nearest of three milestones — cards remembered a
+week, words met, days in a row. Milestones are a *standing*, never "you just
+crossed one": claiming a crossing needs a record of what has already been
+announced, and one announced twice teaches the learner the number is decorative.
+
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
 aspect taught from the first verb as pairs. 76 lexemes, 25 frames, 32 authored
