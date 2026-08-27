@@ -695,7 +695,13 @@ def test_introduction_does_not_stall_while_material_remains(db, user):
     db.commit()
 
     seen: set[int] = set()
-    for _ in range(40):
+    # Runs until introduction dries up of its own accord — the bound is a safety
+    # stop against an infinite loop, not a measurement, and must stay well clear
+    # of what the curriculum actually needs. A daily cap of ten cards over a few
+    # hundred referents takes what it takes: 44 rounds at 82 lexemes. It was 40,
+    # which stopped four rounds early the moment six nouns were added and made
+    # this test report a stall the composer had not had.
+    for _ in range(200):
         picked, stats = build_session(db, user.id, SETTINGS, limit=20)
         for item in picked:
             schedule_cards(db, user, item)
@@ -704,6 +710,11 @@ def test_introduction_does_not_stall_while_material_remains(db, user):
         _defer_everything(db)
         if stats["introduced"] == 0:
             break
+    else:
+        raise AssertionError(
+            "introduction never dried up in 200 rounds; the safety stop is now "
+            "the thing under test, which it must never be"
+        )
 
     started = _started_referents(db, user.id)
     sense_by_form = _sense_by_form(db)
@@ -1245,3 +1256,46 @@ def test_removing_content_is_reported_because_the_build_never_deletes(db):
         "an item the current frames cannot produce went unreported, so removing "
         "content silently does nothing to an existing database"
     )
+
+
+def test_a_preposition_agrees_with_the_word_that_follows_it(db):
+    """`w` becomes `we` before a cluster it cannot be said against.
+
+    Polish writes `we wsi`, not `w wsi`. Every M1 locative happened to be
+    safe — `w szkole`, `w domu`, `w Krakowie` — so the template could carry a
+    bare `w` and nothing revealed it. Adding one noun whose locative is `wsi`
+    produced `Jestem w wsi`, which is simply wrong, and the build reported
+    success: the expected surface is looked up and so cannot be wrong, but the
+    *frame around it* is authored, and nothing was checking that.
+
+    The trigger is the following word, not the frame, so it cannot be written
+    into `frames.yaml` — one template has to yield both `w szkole` and `we wsi`.
+    """
+    from pl.content.frames import euphonic
+
+    assert euphonic("Jestem w ___.", "wsi") == "Jestem we ___."
+    assert euphonic("Jestem w ___.", "Wrocławiu") == "Jestem we ___."
+    assert euphonic("Jestem w ___.", "szkole") == "Jestem w ___."
+    assert euphonic("Idę z ___.", "stołem") == "Idę ze ___."
+    assert euphonic("Idę z ___.", "siostrą") == "Idę z ___."
+    # `do` and `na` have no syllabic form and must be left alone.
+    assert euphonic("Idę do ___.", "wsi") == "Idę do ___."
+
+    # The assertions above pin the rule; this pins that item construction
+    # actually applies it, which is where the bug lived. A crude scan for " z s"
+    # is not the check: `Idę z siostrą` is correct, because `si` is a consonant
+    # and a vowel, not a cluster.
+    built = {}
+    for item in db.scalars(select(Item)):
+        if item.prompt and item.prompt.startswith(("Jestem w", "Idę z")):
+            rendered = item.prompt.replace("___", item.expected_answer)
+            wanted = euphonic(item.prompt, item.expected_answer).replace(
+                "___", item.expected_answer
+            )
+            built[rendered] = wanted
+
+    wrong = sorted(got for got, want in built.items() if got != want)
+    assert not wrong, f"built without applying the rule: {wrong}"
+    assert "Jestem we wsi." in built, "the case that exposed this is not built"
+    assert "Jestem w szkole." in built, "the rule fired where it should not have"
+    assert "Idę z siostrą." in built, "`z siostrą` is correct and must be left alone"

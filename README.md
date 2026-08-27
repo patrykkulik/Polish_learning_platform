@@ -43,8 +43,8 @@ announced, and one announced twice teaches the learner the number is decorative.
 
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
-aspect taught from the first verb as pairs. 76 lexemes, 25 frames, 32 authored
-sentences, **904 items** across six exercise types — cloze (614),
+aspect taught from the first verb as pairs. 82 lexemes, 25 frames, 32 authored
+sentences, **983 items** across six exercise types — cloze (614),
 free translation (112), multiple choice (107, covering both form selection and
 meaning recall), preposition drill (27), listening dictation (26) and aspect
 choice (18) — all generated with no LLM and no human review. Multi-slot items
@@ -111,8 +111,8 @@ them it disagreed with itself by 80% and briefly argued for the wrong bound —
 FSRS fuzzes every interval from the *global* RNG, and it reads the real clock
 unless you hand it one.
 
-Still not fixed by any of this: the learner meets 58 of 76 lexemes and stops. The
-remaining 18 are verbs behind nodes that need more mastery than ninety days buys.
+At this point the learner met 58 of 76 lexemes and stopped — the rest sat behind
+nodes ninety days did not open. What was still holding those nodes shut is below.
 
 **Build order was choosing the curriculum.** 26 listening-dictation items, 131
 free translations and 58 prep drills were built, graded correctly, and never
@@ -142,19 +142,24 @@ fraction always demanded four of four.
 Across six seeds, ninety days each: median distinct items 456 → **526**, median
 nodes opened 4 → **8**, busiest card 196–578 reviews → **34–58**.
 
-On the current gated curriculum that settles at a median **518 of 904 items** and
-**8 of 13 nodes**, with all six exercise types on five seeds of six. **One run in
-six still stalls at four nodes**, and it is the `N03` chokepoint: that node has a
-single stratum, so its one pattern card gates six others, and a stalled run shows
-`V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3 and `N03` **0/1 — one card at 5.8
-stability against a 7.0 bar**. Which seed stalls moves when the content changes,
-so it is roughly a one-in-six probability rather than a bug.
+**The last chokepoint was one node with one stratum.** `N03` carried a single
+paradigm class, so its one pattern card gated six nodes behind it, and one run in
+six stalled at four nodes with `V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3 — and
+`N03` 0/1, one card at 5.8 stability against a 7.0 bar.
 
-The fix is content, and only because the gate changed: with
-`MASTERY_ALLOWED_SHORTFALL = 1`, a second paradigm class turns `N03` from 1-of-1
-into 1-of-2. All twenty feminine nouns share one class; `noc`/`sól`/`wieś`
-(accusative = nominative) are the missing one, and a learner trap the course
-never teaches. Under the old gate that same edit made `N03` harder.
+All twenty feminine nouns shared the class `f:acc-ę|nom-a`. Six consonant-final
+feminines (`noc`, `sól`, `wieś`, `mysz`, `rzecz`, `twarz`) are `f:acc-0|nom-0` —
+accusative equals nominative, a real learner trap the course could not teach.
+That second stratum takes `N03` from 1-of-1 to 1-of-2, because
+`MASTERY_ALLOWED_SHORTFALL = 1`. **Under the old gate the same edit would have
+made it harder** (2-of-2): the gate change and the content change are only useful
+together. Eight nodes now open on **all six seeds**, median 605 of 983 items.
+
+Adding one of those nouns also exposed a bug the "looked up, not written"
+guarantee does not cover: `Jestem w wsi` was built, where Polish requires
+**`we wsi`**. Expected surfaces come from SGJP and cannot be wrong; the frame
+around them is authored, and nothing was checking that the two agree.
+`frames.euphonic` now fixes `w`/`we` and `z`/`ze` against the following word.
 
 ## Quick start
 
@@ -274,7 +279,7 @@ pl/api.py             JSON API; grading never runs in the browser
 pl/content/validate.py  the pipeline's automated stage
 pl/audio.py           the only module that knows how speech is made
 
-data/lexemes.yaml     76 lexemes — 58 nouns and 18 verbs in 9 aspect pairs
+data/lexemes.yaml     82 lexemes — 64 nouns and 18 verbs in 9 aspect pairs
 data/nodes.yaml       the skill DAG — 13 nodes
 data/frames.yaml      25 authored frames
 data/sentences.yaml   32 authored sentences, validated at build time

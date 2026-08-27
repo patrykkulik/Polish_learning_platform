@@ -776,6 +776,40 @@ numbers in a header. Two things are added here, and both are deliberately quiet.
   removed were all still stored, and still being served, after a successful rebuild. `ingest.main`
   now reports them and deletes nothing; the operator decides.
 
+### Free translation accepts one word order, deliberately
+
+- Polish word order is freer than the grader is. `Widzę kota` is the only accepted answer; `Kota
+  widzę` is graded `WORD_ORDER` and fails the rule card, though a native speaker would accept it
+  under contrastive stress.
+- **Design choice: teach one neutral order at A1 and record the cost.** A beginner benefits from a
+  single model order, and the alternatives carry information (emphasis) that the course does not yet
+  teach. Decided by the owner, who is a native speaker, as the right trade at this level.
+- **The mechanism to lift it already ships.** `item_variant` exists, the write path exists, and
+  criterion 18 describes exactly this — a valid answer the item did not anticipate entering the
+  accepted set. It ships empty because M1's single-slot cloze admits alternatives only under
+  syncretism; multi-slot free translation is the first exercise that produces them in quantity. When
+  word order stops being a simplification worth making, this is where it is undone, and no schema
+  changes.
+
+### A preposition agrees with the word that follows it
+
+- `Verified:` Polish writes `we wsi`, not `w wsi`. Before a cluster the bare preposition cannot be
+  said against, `w` takes the form `we` and `z` takes `ze`.
+- **The trigger is the following word, so it cannot live in the frame.** One template has to yield
+  both `Jestem w szkole` and `Jestem we wsi`, which means the fix belongs where the item is made.
+  `frames.euphonic` applies it.
+- **This is the class of error the "looked up, not written" guarantee does not cover**, and it went
+  unnoticed for the whole of M1. Every expected *surface* is a real form and cannot be wrong unless
+  SGJP is wrong — but the frame around it is authored, and nothing checks that the authored part
+  agrees with the looked-up part. Every M1 locative happened to be safe (`w szkole`, `w domu`,
+  `w Krakowie`); adding one noun whose locative is `wsi` produced `Jestem w wsi` and a successful
+  build. **Content correctness is not one guarantee but two, and only one of them was covered.**
+- Still uncovered, and **unconfirmed**: *which* preposition a venue governs. `Jestem w uniwersytecie`
+  is built, and `na uniwersytecie` looks right to a reference grammar — but that is a judgement no
+  rule derives and no non-speaker should be making. Same question for `wieś`: the build now says
+  `we wsi`, where `na wsi` may be the idiomatic form. Per-lexeme government needs a field on the
+  lexeme and a native speaker's answer; **both are open, and flagged rather than guessed.**
+
 ### Frames are gated by theme, so nonsense does not scale with vocabulary
 
 - **The problem is multiplicative.** An ungated frame produces one sentence per lexeme, so an unsuitable
@@ -1189,22 +1223,26 @@ to settle an argument — it will confidently settle it the wrong way.**
   simulated days, against 20 items and 1 node when this work started, and meets all six exercise
   types on five seeds of six.
 
-  **One run in six still stalls at four nodes, and it is the `N03` chokepoint.** `N03` carries a
-  single stratum, so `strata_needed(1)` is 1 and its one pattern card gates `N05`, `N06` and the six
-  nodes behind them. Measured on a stalled run: `V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3, and
-  `N03` **0/1 — one card at 5.8 stability against a 7.0 bar**. Which seed stalls moves when the
-  content changes, so it is a probability rather than a bug: roughly one learner in six.
+  ~~One run in six still stalls at four nodes.~~ **Fixed, by content, and only because the gate
+  changed first.** The stall was the `N03` chokepoint: that node carried a *single* stratum, so
+  `strata_needed(1)` was 1 and its one pattern card gated `N05`, `N06` and the six nodes behind them.
+  Measured on a stalled run: `V01` 58/58, `N01` 5/5, `N02` 5/5, `N04` 3/3 — and `N03` **0/1, one card
+  at 5.8 stability against a 7.0 bar**. Which seed stalled moved when the content changed, so it was
+  a probability rather than a bug: roughly one learner in six.
 
-  **The fix is now content, and only because the gate changed.** With
-  `MASTERY_ALLOWED_SHORTFALL = 1`, `strata_needed(2)` is **1** — so giving `N03` a second paradigm
-  class turns 1-of-1 into 1-of-2 and the chokepoint dissolves. All twenty feminine nouns in the set
-  share `f:acc-ę|nom-a`; the consonant-final feminines (`noc`, `sól`, `wieś`, where the accusative
-  equals the nominative) are the missing class, and a real learner trap the course never teaches.
-  Under the old gate this same edit made `N03` *harder* (2-of-2), which is why it was rejected then
-  and is right now. It wants a native speaker's eye on the glosses and the sentences the frames would
-  build from them.
+  All twenty feminine nouns in the set shared the class `f:acc-ę|nom-a`. Six consonant-final
+  feminines — `noc`, `sól`, `wieś`, `mysz`, `rzecz`, `twarz` — are all `f:acc-0|nom-0`, where the
+  accusative equals the nominative. That is a second stratum for `N03`, and a real learner trap the
+  course had no way to teach. With `MASTERY_ALLOWED_SHORTFALL = 1`, `strata_needed(2)` is **1**, so
+  the node goes from 1-of-1 to 1-of-2 and the chokepoint dissolves. **Under the old gate this same
+  edit would have made `N03` harder** — 1-of-1 becomes 2-of-2 — which is why it was measured and
+  rejected two revisions ago and is right now. The gate change and the content change are only
+  useful together.
 
-  Beyond that the limit is a ceiling rather than a wall, and it is content — 76 lexemes is roughly
+  `Verified:` eight nodes open on **all six seeds**, where it was 4,8,8,8,9,9 before; median items
+  605 of 983.
+
+  Beyond that the limit is a ceiling rather than a wall, and it is content — 82 lexemes is roughly
   3% of conversational B1. See §Content.
 
 **Unimplemented, not merely defective**

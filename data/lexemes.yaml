@@ -307,3 +307,26 @@
   theme: verbs
   pos: inf
   aspect_partner: myśleć
+
+# Consonant-final feminines (III declension). The accusative equals the
+# nominative, which is a paradigm class the set had none of: all twenty other
+# feminine nouns are -a/-ę. That gap is why N03 carried a single stratum and its
+# one pattern card gated six nodes behind it.
+- lemma: noc
+  gloss: night
+  theme: abstract
+- lemma: sól
+  gloss: salt
+  theme: food
+- lemma: wieś
+  gloss: village
+  theme: venue
+- lemma: mysz
+  gloss: mouse
+  theme: animals
+- lemma: rzecz
+  gloss: thing
+  theme: objects
+- lemma: twarz
+  gloss: face
+  theme: objects

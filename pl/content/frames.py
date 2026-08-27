@@ -320,13 +320,49 @@ def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item |
         node_id=pattern.node_id,
         pattern_id=pattern.id,
         exercise_type=frame["exercise_type"],
-        prompt=frame["template"],
+        prompt=euphonic(frame["template"], target.surface),
         gloss=frame["gloss"].format(gloss=gloss),
         expected_answer=target.surface,
         target_form_id=target.id,
         options_json=options,
         source="template",
     )
+
+
+#: Vowels, for the euphonic preposition rule below. `ó` is a vowel; `y` counts.
+_VOWELS = frozenset("aeiouyąęó")
+
+#: `w` takes the form `we`, and `z` takes `ze`, before a word that opens with a
+#: consonant cluster the bare preposition cannot be said against. The trigger is
+#: the *following word*, so it cannot live in the frame: "Jestem w szkole" and
+#: "Jestem we wsi" come from one template.
+_EUPHONIC = {"w": ("w", "f"), "z": ("s", "z", "ś", "ź", "ż", "sz")}
+
+
+def euphonic(text: str, following: str) -> str:
+    """Fix `w`/`z` in `text` for the word that follows the blank.
+
+    Polish writes `we wsi`, not `w wsi`: before a cluster starting with the same
+    or a similar consonant, the preposition takes its syllabic form. Every M1
+    locative happened to be safe — `w szkole`, `w domu`, `w Krakowie` — so the
+    template could carry a bare `w` and nobody noticed. Adding one noun whose
+    locative is `wsi` produced `Jestem w wsi`, which is simply wrong, and the
+    build had no way to know.
+
+    This is a property of the pair, not of the frame, which is why it is applied
+    when the item is made rather than written into `frames.yaml`.
+    """
+    if not following:
+        return text
+    head = following[0].lower()
+    cluster = len(following) > 1 and following[1].lower() not in _VOWELS
+    for short, triggers in _EUPHONIC.items():
+        if not cluster or head not in triggers:
+            continue
+        for slot in ("___", "{form}"):
+            text = text.replace(f" {short} {slot}", f" {short}e {slot}")
+        text = text.replace(f" {short} {following}", f" {short}e {following}")
+    return text
 
 
 def _free_item(frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None:
@@ -341,12 +377,12 @@ def _free_item(frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None
     if pattern is None:
         return None
 
-    sentence = frame["sentence"].format(form=target.surface)
+    sentence = euphonic(frame["sentence"], target.surface).format(form=target.surface)
     return Item(
         node_id=pattern.node_id,
         pattern_id=pattern.id,
         exercise_type=frame["exercise_type"],
-        prompt=frame["template"],
+        prompt=euphonic(frame["template"], target.surface),
         gloss=frame["gloss"].format(gloss=gloss),
         expected_answer=sentence,
         target_form_id=target.id,
