@@ -196,7 +196,7 @@ function showVerdict(data) {
   v.innerHTML = `
     <div class="label">${escapeHtml(heading)}</div>
     <div class="why">${escapeHtml(data.message)}</div>
-    <div class="routed">${routedChips(data.scored)}</div>
+    <div class="routed">${routedChips(data.scored, data.counted_earlier || [])}</div>
   `;
 
   const go = document.getElementById("go");
@@ -220,15 +220,21 @@ function onceEnter(e) {
 /* The scheduling made legible: a card that was not scored is shown as
  * untouched, because "we deliberately left this alone" is information the
  * learner benefits from seeing. */
-function routedChips(scored) {
+function routedChips(scored, countedEarlier) {
   return ["pattern", "morph", "lexical"]
     .map((pop) => {
       const label = POPULATION_LABEL[pop];
-      if (!(pop in scored)) {
-        return `<span class="chip untouched">${label} · untouched</span>`;
+      if (pop in scored) {
+        const [cls, text] = RATING[scored[pop]] || ["", "?"];
+        return `<span class="chip ${cls}"><b>${label}</b> · ${text}</span>`;
       }
-      const [cls, text] = RATING[scored[pop]] || ["", "?"];
-      return `<span class="chip ${cls}"><b>${label}</b> · ${text}</span>`;
+      // "This counted, and the schedule moves once a day" is a different fact
+      // from "this exercise does not test that", and the learner should not
+      // have to guess which one they are looking at.
+      if (countedEarlier.includes(pop)) {
+        return `<span class="chip earlier">${label} · counted earlier today</span>`;
+      }
+      return `<span class="chip untouched">${label} · untouched</span>`;
     })
     .join("");
 }

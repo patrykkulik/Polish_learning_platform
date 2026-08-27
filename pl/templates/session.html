@@ -143,6 +143,9 @@
   .chip.good { border-color: var(--good); color: var(--good); }
   .chip.hard { border-color: var(--warn); color: var(--warn); }
   .chip.untouched { opacity: .7; font-style: italic; }
+  /* Counted, but the schedule advances once a day — neither a pass, a failure,
+     nor "this exercise does not test that". */
+  .chip.earlier { border-style: dashed; opacity: .85; }
 
   .actions { display: flex; gap: .75rem; align-items: center; }
   button.primary {

@@ -1062,6 +1062,12 @@ to settle an argument — it will confidently settle it the wrong way.**
   reasons that are not the stability bar (it clears 13 of its 14 pattern cards either way). Worth
   saying plainly rather than quoting the good seeds, which an earlier draft of this entry did.
 
+  The review screen gained a third card state to go with it. "This counted, and the schedule advances
+  once a day" is a different fact from "this exercise does not test that", and reporting both as
+  *untouched* would have the learner read a correct answer as not counting — so `/api/submit` returns
+  `counted_earlier` beside `scored`, and the chip says so. §"Cloze does not score lexical cards" made
+  the two-state version legible on purpose; a third state is the price of the fix above.
+
   **Three wrong answers were ruled out on the way, each by measurement.** *More lexemes:* taking `N03`
   from one stratum to two moves its gate from 1-of-1 to 2-of-2 — still 100%, and strictly harder.
   *Lower thresholds:* every started card already clears `MASTERY_MIN_REVIEWS` and

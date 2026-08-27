@@ -43,7 +43,7 @@ from pl.models import (
     Node,
     Review,
 )
-from pl.schedule import apply_diagnosis
+from pl.schedule import apply_diagnosis, cards_for_item, ratings_for
 
 log = logging.getLogger(__name__)
 
@@ -228,6 +228,18 @@ def submit(payload: Submission):
         applied = apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
         db.commit()
 
+        # Populations the routing table *would* have scored but whose card had
+        # already advanced today (see `ONE_REVIEW_PER_DAY`). Reporting these as
+        # "untouched" alongside the ones the table deliberately leaves alone
+        # would collapse two different facts into one word — "this exercise does
+        # not test that" and "this counted, and the schedule moves once a day".
+        rated = ratings_for(item, diagnosis.error_class)
+        counted_earlier = sorted(
+            population
+            for population in cards_for_item(db, user.id, item)
+            if population in rated and population not in applied
+        )
+
         return {
             "correct": diagnosis.is_correct,
             "error_class": str(diagnosis.error_class),
@@ -237,6 +249,7 @@ def submit(payload: Submission):
             # not. The distinction is the whole design; surfacing it makes the
             # scheduling legible instead of magic.
             "scored": {k: int(v) for k, v in applied.items()},
+            "counted_earlier": counted_earlier,
             "progress": streaks.progress(db, user.id, user.settings_json),
         }
     finally:

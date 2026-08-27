@@ -329,3 +329,46 @@ def test_milestones_report_a_standing_not_a_celebration(client):
             assert standing["reached"] == 0, "nothing has been reached"
             assert standing["next"] > 0, "there is always a next target"
             assert standing["value"] < standing["next"]
+
+
+def test_a_second_item_of_the_same_rule_says_it_counted(client):
+    """"Counted, and the schedule moves once a day" is not "untouched".
+
+    A pattern card is shared by every item in its stratum and advances at most
+    once a day, so the second item of a rule in one session legitimately moves
+    no rule card. Reporting that as `untouched` — the word for a population the
+    routing table deliberately leaves alone — would collapse two different facts
+    into one, and the learner would read it as their answer not counting.
+    """
+    from pl.models import Item
+
+    http, Session = client
+    with Session() as db:
+        first = db.scalar(
+            select(Item).where(Item.exercise_type == "cloze", Item.pattern_id.isnot(None))
+        )
+        pair = db.scalar(
+            select(Item).where(
+                Item.pattern_id == first.pattern_id, Item.id != first.id
+            )
+        )
+        assert pair is not None, "need two items of one rule to prove anything"
+        answers = (
+            (first.id, first.expected_answer),
+            (pair.id, pair.expected_answer),
+        )
+
+    opening = http.post(
+        "/api/submit", json={"item_id": answers[0][0], "answer": answers[0][1]}
+    ).json()
+    assert "pattern" in opening["scored"], "the first item did not move the rule card"
+    assert opening["counted_earlier"] == []
+
+    second = http.post(
+        "/api/submit", json={"item_id": answers[1][0], "answer": answers[1][1]}
+    ).json()
+    assert "pattern" not in second["scored"], "the rule card advanced twice in a day"
+    assert "pattern" in second["counted_earlier"], (
+        "the second answer moved no rule card and did not say why — the learner "
+        "sees it as 'untouched' and reads that as not counting"
+    )
