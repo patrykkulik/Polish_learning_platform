@@ -190,6 +190,9 @@
 - lemma: uniwersytet
   gloss: university
   theme: venue
+  # "na uniwersytecie", never "w uniwersytecie". Which preposition a place takes
+  # is lexical — no rule derives it from the noun, so it is stored on the noun.
+  locative_preposition: na
 
 # Abstract nouns, so `interesować się` has something it can plausibly govern.
 - lemma: historia
@@ -321,6 +324,11 @@
 - lemma: wieś
   gloss: village
   theme: venue
+  # "na wsi", not "we wsi" — same lexical government as uniwersytet. Note this
+  # overrides a preposition the euphonic rule had just been taught to fix: `we`
+  # was correct for `w`, and `na` is correct instead of `w`.
+  locative_preposition: na
+
 - lemma: mysz
   gloss: mouse
   theme: animals

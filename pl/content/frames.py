@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from pl import morph
 from pl import tags
 from pl.content.ingest import (
+    lexeme_locatives,
     lexeme_themes,
     node_key_for,
     rule_nodes,
@@ -225,6 +226,7 @@ def build_items(db: Session) -> list[Item]:
     # what a form-selection MCQ is — collides with it and is dropped.
     rule_cases = rule_stratification()
     themes = lexeme_themes()
+    locatives = lexeme_locatives()
     noms = _noun_nominatives(db)
 
     preexisting = {
@@ -249,14 +251,16 @@ def build_items(db: Session) -> list[Item]:
             if frame.get("vocabulary"):
                 item = _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng)
             elif frame["exercise_type"] == "free_translation":
-                item = _free_item(frame, lexeme, cells, gloss, patterns, rule_cases)
+                item = _free_item(
+                    frame, lexeme, cells, gloss, patterns, rule_cases, locatives
+                )
             elif frame["exercise_type"] == "aspect_choice":
                 item = _aspect_item(
                     db, frame, lexeme, cells, gloss, patterns, rule_cases
                 )
             else:
                 item = _form_item(
-                    frame, lexeme, cells, gloss, patterns, rng, rule_cases
+                    frame, lexeme, cells, gloss, patterns, rng, rule_cases, locatives
                 )
 
             if item is None:
@@ -286,7 +290,9 @@ def build_items(db: Session) -> list[Item]:
     return created
 
 
-def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item | None:
+def _form_item(
+    frame, lexeme, cells, gloss, patterns, rng, rule_cases, locatives
+) -> Item | None:
     target = _cell(cells, frame["case"])
     if target is None:
         return None
@@ -320,7 +326,9 @@ def _form_item(frame, lexeme, cells, gloss, patterns, rng, rule_cases) -> Item |
         node_id=pattern.node_id,
         pattern_id=pattern.id,
         exercise_type=frame["exercise_type"],
-        prompt=euphonic(frame["template"], target.surface),
+        prompt=place_preposition(
+            frame["template"], target.surface, locatives.get(lexeme.lemma)
+        ),
         gloss=frame["gloss"].format(gloss=gloss),
         expected_answer=target.surface,
         target_form_id=target.id,
@@ -365,7 +373,25 @@ def euphonic(text: str, following: str) -> str:
     return text
 
 
-def _free_item(frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None:
+def place_preposition(text: str, following: str, preposition: str | None) -> str:
+    """Render a template's place preposition for one lexeme.
+
+    Two independent corrections, in order. *Which* preposition is lexical —
+    `w szkole` but `na uniwersytecie`, `w mieście` but `na wsi` — and comes from
+    the lexeme. *How to say it* is phonological, and `euphonic` decides that.
+    Doing them in this order matters: `na` has no syllabic variant, so a lexeme
+    that overrides to `na` must be substituted before the `w`/`we` rule is asked
+    anything.
+    """
+    if preposition:
+        for slot in ("___", "{form}"):
+            text = text.replace(f" w {slot}", f" {preposition} {slot}")
+    return euphonic(text, following)
+
+
+def _free_item(
+    frame, lexeme, cells, gloss, patterns, rule_cases, locatives
+) -> Item | None:
     """A whole sentence the learner types out, one slot per token."""
     target = _cell(cells, frame["case"])
     if target is None:
@@ -377,12 +403,15 @@ def _free_item(frame, lexeme, cells, gloss, patterns, rule_cases) -> Item | None
     if pattern is None:
         return None
 
-    sentence = euphonic(frame["sentence"], target.surface).format(form=target.surface)
+    prep = locatives.get(lexeme.lemma)
+    sentence = place_preposition(
+        frame["sentence"], target.surface, prep
+    ).format(form=target.surface)
     return Item(
         node_id=pattern.node_id,
         pattern_id=pattern.id,
         exercise_type=frame["exercise_type"],
-        prompt=euphonic(frame["template"], target.surface),
+        prompt=place_preposition(frame["template"], target.surface, prep),
         gloss=frame["gloss"].format(gloss=gloss),
         expected_answer=sentence,
         target_form_id=target.id,

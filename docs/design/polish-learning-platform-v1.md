@@ -804,11 +804,27 @@ numbers in a header. Two things are added here, and both are deliberately quiet.
   agrees with the looked-up part. Every M1 locative happened to be safe (`w szkole`, `w domu`,
   `w Krakowie`); adding one noun whose locative is `wsi` produced `Jestem w wsi` and a successful
   build. **Content correctness is not one guarantee but two, and only one of them was covered.**
-- Still uncovered, and **unconfirmed**: *which* preposition a venue governs. `Jestem w uniwersytecie`
-  is built, and `na uniwersytecie` looks right to a reference grammar — but that is a judgement no
-  rule derives and no non-speaker should be making. Same question for `wieś`: the build now says
-  `we wsi`, where `na wsi` may be the idiomatic form. Per-lexeme government needs a field on the
-  lexeme and a native speaker's answer; **both are open, and flagged rather than guessed.**
+### Which preposition a place takes is lexical, and lives on the lexeme
+
+- `Verified with the owner, a native speaker:` it is **`na uniwersytecie`**, not `w uniwersytecie`,
+  and **`na wsi`**, not `we wsi`. Both were built wrong.
+- **Nothing derives this.** Not gender, not paradigm class, not theme: `w szkole` but
+  `na uniwersytecie`, `w mieście` but `na wsi`. It is a fact about the word, so
+  `lexemes.yaml` carries `locative_preposition` and `frames.place_preposition` applies it.
+- **Two different corrections, applied in that order.** *Which* preposition is lexical and comes from
+  the lexeme; *how to say it* is phonological and comes from `euphonic`. `wieś` needs both answers and
+  they disagree — `we wsi` is the correct way to say the **wrong** preposition. Substituting first
+  matters, because `na` has no syllabic variant to ask about.
+- **This is the same lesson as `we wsi`, one level up, and it is the one worth keeping:** the M1
+  guarantee is that a generated *surface* cannot be wrong, because it is looked up rather than
+  written. Everything around the surface — the preposition, the frame, the gloss — is authored, and
+  nothing checks it. Two defects of that shape have now been found in as many days, both by reading
+  the sentences out loud rather than by any test. **A content pipeline that validates morphology and
+  nothing else validates one word in three.**
+- Still open, and *not* guessed: nouns taking `na` for place also take `na` + **accusative** for
+  direction, where the course currently builds `do` + genitive. `Idę do wsi` and `Idę na wieś` are
+  both grammatical and mean different things, so this is a curriculum choice rather than an error —
+  but it is unmodelled, and the same field would carry it.
 
 ### Frames are gated by theme, so nonsense does not scale with vocabulary
 

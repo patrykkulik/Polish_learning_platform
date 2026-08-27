@@ -155,11 +155,19 @@ That second stratum takes `N03` from 1-of-1 to 1-of-2, because
 made it harder** (2-of-2): the gate change and the content change are only useful
 together. Eight nodes now open on **all six seeds**, median 605 of 983 items.
 
-Adding one of those nouns also exposed a bug the "looked up, not written"
-guarantee does not cover: `Jestem w wsi` was built, where Polish requires
-**`we wsi`**. Expected surfaces come from SGJP and cannot be wrong; the frame
-around them is authored, and nothing was checking that the two agree.
-`frames.euphonic` now fixes `w`/`we` and `z`/`ze` against the following word.
+**A content pipeline that validates morphology validates one word in three.**
+Adding those nouns exposed two defects the "looked up, not written" guarantee
+does not cover, both found by reading sentences aloud rather than by any test.
+`Jestem w wsi` was built where Polish requires `we wsi` — phonology, now handled
+by `frames.euphonic`. And `Jestem w uniwersytecie` was built where it must be
+**`na uniwersytecie`** — lexical government, which nothing derives from gender,
+paradigm or theme, so `lexemes.yaml` carries `locative_preposition` and
+`frames.place_preposition` applies it.
+
+The two corrections disagree on the same word, and their order matters: `we wsi`
+is the correct way to say the *wrong* preposition, and the right answer is
+`na wsi`. Expected surfaces come from SGJP and cannot be wrong; every word
+around them is authored, and nothing was checking that.
 
 ## Quick start
 

@@ -1287,7 +1287,9 @@ def test_a_preposition_agrees_with_the_word_that_follows_it(db):
     # and a vowel, not a cluster.
     built = {}
     for item in db.scalars(select(Item)):
-        if item.prompt and item.prompt.startswith(("Jestem w", "Idę z")):
+        # "Jestem " rather than "Jestem w": a lexeme may override the preposition
+        # entirely, and those items are exactly the ones worth checking.
+        if item.prompt and item.prompt.startswith(("Jestem ", "Idę z")):
             rendered = item.prompt.replace("___", item.expected_answer)
             wanted = euphonic(item.prompt, item.expected_answer).replace(
                 "___", item.expected_answer
@@ -1296,6 +1298,44 @@ def test_a_preposition_agrees_with_the_word_that_follows_it(db):
 
     wrong = sorted(got for got, want in built.items() if got != want)
     assert not wrong, f"built without applying the rule: {wrong}"
-    assert "Jestem we wsi." in built, "the case that exposed this is not built"
     assert "Jestem w szkole." in built, "the rule fired where it should not have"
     assert "Idę z siostrą." in built, "`z siostrą` is correct and must be left alone"
+    # `wieś` is what exposed this rule, and no longer demonstrates it: its place
+    # preposition is `na`, so the w/we question never arises for it now. The rule
+    # is still right and still load-bearing for the next such noun — Polish has
+    # plenty — which is why the unit assertions above carry the proof and this
+    # corpus check only guards the wiring.
+    assert "Jestem na wsi." in built, "the lexical override did not reach the build"
+
+
+def test_a_place_takes_the_preposition_its_own_word_governs(db):
+    """Which preposition a place takes is lexical, and no rule derives it.
+
+    `w szkole` but `na uniwersytecie`; `w mieście` but `na wsi`. Nothing about
+    the noun's shape, gender or paradigm predicts it — it is a fact about the
+    word, so it lives on the word. Both were built wrong until a native speaker
+    read them, which is the point: the "looked up, not written" guarantee covers
+    the *form*, and every word around the form is still authored.
+
+    Distinct from `euphonic`, which chooses between `w` and `we` for the same
+    preposition on phonological grounds. One is which preposition; the other is
+    how to say it. `wieś` needs both answers and they disagree — `we wsi` is the
+    right way to say the wrong preposition.
+    """
+    from pl.content.frames import place_preposition
+
+    assert place_preposition("Jestem w ___.", "uniwersytecie", "na") == "Jestem na ___."
+    assert place_preposition("Jestem w ___.", "wsi", "na") == "Jestem na ___."
+    # No override: the phonological rule still gets its say.
+    assert place_preposition("Jestem w ___.", "wsi", None) == "Jestem we ___."
+    assert place_preposition("Jestem w ___.", "szkole", None) == "Jestem w ___."
+
+    built = {
+        item.prompt.replace("___", item.expected_answer)
+        for item in db.scalars(select(Item))
+        if item.prompt and item.prompt.startswith("Jestem ")
+    }
+    assert "Jestem na uniwersytecie." in built
+    assert "Jestem na wsi." in built
+    assert "Jestem w szkole." in built, "the override leaked onto a noun that takes w"
+    assert not [s for s in built if s.startswith("Jestem w uniwersytecie")]

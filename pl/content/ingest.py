@@ -103,6 +103,24 @@ def node_key_for(rule: str, lexeme, mapping: dict) -> str | None:
     return None
 
 
+def lexeme_locatives() -> dict[str, str]:
+    """lemma -> the preposition its *locative of place* takes, where not `w`.
+
+    Government is lexical, not phonological. `w szkole` but `na uniwersytecie`;
+    `w mieście` but `na wsi`. No rule derives which noun takes which — it is a
+    fact about the word, so it is stored on the word.
+
+    Distinct from `frames.euphonic`, which decides between `w` and `we` for the
+    *same* preposition on phonological grounds. One is which preposition; the
+    other is how to say it.
+    """
+    return {
+        entry["lemma"]: entry["locative_preposition"]
+        for entry in _load("lexemes.yaml")
+        if entry.get("locative_preposition")
+    }
+
+
 def lexeme_themes() -> dict[str, set[str]]:
     """lemma -> its themes, for frames that only make sense with some of the set.
 
