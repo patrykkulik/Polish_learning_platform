@@ -214,24 +214,33 @@ def ratings_for(item: Item, error_class: ErrorClass) -> dict[str, Rating]:
 ONE_REVIEW_PER_DAY = True
 
 
-def _reviewed_today(db: Session, card: Card) -> bool:
-    """Has this card's schedule already moved today?
+def cards_advanced_since(db: Session, user_id: int, since: datetime) -> set[int]:
+    """Cards whose schedule has already moved since `since`.
 
     A pattern card is shared by every item in its stratum, so a session holding
     ten items of one rule reviews that rule's card ten times. FSRS reads the
     interval since the last review; ten reviews minutes apart are ten intervals
     of nearly zero, and the card's stability is crushed by its own popularity
     rather than by the learner's ignorance.
+
+    `since` is passed in rather than computed here, because the only correct
+    boundary is the learner's local midnight and this module cannot see their
+    settings without importing the composer that imports it. An earlier version
+    took UTC midnight for itself, which put this rule on a different day from
+    the streak, the daily goal and the debt horizon for every learner not living
+    in UTC.
+
+    Returned as a set of ids rather than a per-card predicate because the answer
+    is needed three times over: to decide what to score, what counts as debt,
+    and what the session may re-offer. Those three must agree.
     """
-    midnight = datetime.now(UTC).replace(
-        hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+    return set(
+        db.scalars(
+            select(Review.card_id)
+            .join(Attempt, Attempt.id == Review.attempt_id)
+            .where(Attempt.user_id == user_id, Attempt.created_at >= since)
+        )
     )
-    return db.scalar(
-        select(Review.id)
-        .join(Attempt, Attempt.id == Review.attempt_id)
-        .where(Review.card_id == card.id, Attempt.created_at >= midnight)
-        .limit(1)
-    ) is not None
 
 
 def apply_diagnosis(
@@ -240,17 +249,27 @@ def apply_diagnosis(
     item: Item,
     diagnosis: Diagnosis,
     attempt_id: int,
+    day_start: datetime,
 ) -> dict[str, Rating]:
-    """Route one diagnosis to the cards it scores. Returns what was applied."""
+    """Route one diagnosis to the cards it scores. Returns what was applied.
+
+    `day_start` is the learner's local midnight, supplied by the caller — see
+    `cards_advanced_since`. It is required rather than defaulted, because the
+    one thing this argument must never do is quietly disagree with the day the
+    rest of the loop is counting.
+    """
     cards = cards_for_item(db, user_id, item)
     ratings = ratings_for(item, diagnosis.error_class)
+    settled = (
+        cards_advanced_since(db, user_id, day_start) if ONE_REVIEW_PER_DAY else set()
+    )
     applied: dict[str, Rating] = {}
 
     for population, card in cards.items():
         rating = ratings.get(population)
         if rating is None:
             continue  # unscored: this card's schedule is deliberately untouched
-        if ONE_REVIEW_PER_DAY and _reviewed_today(db, card):
+        if card.id in settled:
             continue
         apply_rating(db, card, rating, attempt_id)
         applied[population] = rating

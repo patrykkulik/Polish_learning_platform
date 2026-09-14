@@ -1232,10 +1232,53 @@ to settle an argument — it will confidently settle it the wrong way.**
   the lexemes the learner holds a lexical or morph card for, and ordered by how often each item has
   been answered — so the stratum rotates without a random seed, and the composer stays deterministic.
 
+- ~~`ONE_REVIEW_PER_DAY` made the streak unearnable.~~ **Fixed, and it is the sharpest example in this
+  document of a fix creating a defect its own tests could not see.** Suppressing a card's schedule
+  advance left `due_at` in the past; FSRS puts a new card's first steps minutes apart; so on any day
+  the learner met new material, `debt_remaining` never reached zero and criterion 12's second
+  condition could not be satisfied. The learner answered and the due figure did not move.
+
+  `session.settled_today` is now the single definition of "has already had its turn today", read by
+  the composer's debt segment and by `streak.debt_remaining`. They disagreed once and the streak
+  became unearnable; one helper is what stops that recurring. `Verified:` over thirty simulated days
+  at 85% accuracy the streak is earned on 13 days, against 4 before.
+
+  **Why nothing caught it.** Every positive test in `test_streak.py` answered items without creating
+  a single `Card`, so `debt_remaining` counted nothing and `debt_clear` was true vacuously — the
+  file's own docstring names "a learner who has drifted into holding no cards" as the hazard and then
+  builds every happy path on one. `scripts/journey_sim.py` never called `record_activity`, so the
+  instrument the pacing decisions rest on could not observe criterion 12 at all. The simulation now
+  finishes each day the way the review page does and prints the streak beside the coverage figures.
+
+- ~~The absence reckoning charged a returning learner twice.~~ `missed` was recomputed from
+  `last_completed_on` on every later day while the freezes an earlier visit had already spent were
+  gone, so the break test compared the *whole* gap against *this* visit's spend. `Verified:` a
+  learner who opened the app during a two-day gap paid a freeze and then lost the streak, while one
+  who stayed on the sofa kept it — same gap, same freezes, opposite outcomes. Showing up was punished
+  for showing up. Now only the days not already settled are charged.
+
+- ~~A column added to a model could not reach an existing database.~~ `create_all` creates tables and
+  never alters one it finds, so `card.created_at` and `streak.absence_settled_on` were simply absent
+  on any `polish.db` that already existed — and the failure was delayed and misleading, because the
+  content build touches none of those tables and reports success before the first page load raises
+  `no such column`. `db.add_missing_columns` adds nullable columns idempotently and **refuses** a
+  NOT NULL one, which is a real migration and should stop the operator rather than be guessed at.
+  Alembic stays deferred; it is only defensible while adding a column still reaches the learner.
+
+**Newly visible, and not addressed here**
+
+- **The daily goal can exceed what a clean day offers.** With no debt, a session is introduction only
+  and serves about ten items against a default `daily_goal_items` of 20, so a learner who has caught
+  up entirely cannot meet the goal and cannot advance the streak. Surfaced by the simulation now that
+  it reports criterion 12: a *flawless* learner earns the streak on 0 of 20 days, where an 85%
+  learner earns it on 13 of 30. This predates the branch — the cap and the goal have always been 10
+  and 20 — and changing either is a product decision about what a day's work is, so it is recorded
+  rather than patched.
+
 **Would stop a real learner**
 
 - **Nothing outright, at this revision** — the first time that has been true. A learner at 85%
-  accuracy meets a median **518 of 904** items and opens a median **8 of 13** nodes over ninety
+  accuracy meets a median **518 of 904** items (measured before the six nouns below) and opens a median **8 of 13** nodes over ninety
   simulated days, against 20 items and 1 node when this work started, and meets all six exercise
   types on five seeds of six.
 
@@ -1285,7 +1328,7 @@ to settle an argument — it will confidently settle it the wrong way.**
 
 **Content**
 
-- 76 lexemes against the ~600 M2 calls for, and the shortfall lands unevenly. Per-rule stratification
+- 82 lexemes against the ~600 M2 calls for, and the shortfall lands unevenly. Per-rule stratification
   keeps each node's partition honest, but a stratum needs items in it before "the card generalises
   across its stratum" means anything. Measured at this revision:
 

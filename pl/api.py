@@ -15,13 +15,14 @@ import logging
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from pl import db as database
 from pl import session as composer
@@ -225,7 +226,10 @@ def submit(payload: Submission):
         db.flush()
 
         diagnosis = grade_item(db, item, payload.answer)
-        applied = apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+        applied = apply_diagnosis(
+            db, user.id, item, diagnosis, attempt.id,
+            composer.start_of_user_day(user.settings_json),
+        )
         db.commit()
 
         # Populations the routing table *would* have scored but whose card had
@@ -338,7 +342,7 @@ def complete():
         db.close()
 
 
-def _retention_curve(db, user_id: int, days: int = 30) -> list[dict]:
+def _retention_curve(db, user_id: int, settings: dict, days: int = 30) -> list[dict]:
     """Share of reviews the learner actually recalled, by day.
 
     The figure that survives the streak breaking. A streak counts appearances; a
@@ -349,22 +353,32 @@ def _retention_curve(db, user_id: int, days: int = 30) -> list[dict]:
     diacritic scores, and the learner who wrote `robie` for `robię` had the
     grammar and missed the keyboard. Counting that as forgetting would make the
     curve a measure of typing.
+
+    Bucketed by the learner's **local** day, not by the UTC date. Grouping in SQL
+    on the stored UTC-naive column is cheaper and wrong for anyone west of
+    Greenwich: an evening session in Los Angeles is past midnight UTC, so one
+    sitting is split across two bars and the count of active days is inflated.
+    Thirty days of one learner's reviews is small enough to bucket in Python,
+    which also keeps the query portable.
     """
-    since = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    tz = ZoneInfo(settings.get("tz", "UTC"))
+    since = composer.start_of_user_day(settings) - timedelta(days=days - 1)
     rows = db.execute(
-        select(
-            func.date(Attempt.created_at),
-            func.count(Review.id),
-            func.sum(case((Review.rating > 1, 1), else_=0)),
-        )
+        select(Attempt.created_at, Review.rating)
         .join(Review, Review.attempt_id == Attempt.id)
         .where(Attempt.user_id == user_id, Attempt.created_at >= since)
-        .group_by(func.date(Attempt.created_at))
-        .order_by(func.date(Attempt.created_at))
     ).all()
+
+    buckets: dict[str, list[int]] = {}
+    for created_at, rating in rows:
+        local_day = created_at.replace(tzinfo=UTC).astimezone(tz).date()
+        tally = buckets.setdefault(str(local_day), [0, 0])
+        tally[0] += 1
+        if rating > 1:
+            tally[1] += 1
     return [
-        {"day": str(day), "reviews": int(total), "recalled": int(recalled or 0)}
-        for day, total, recalled in rows
+        {"day": day, "reviews": total, "recalled": recalled}
+        for day, (total, recalled) in sorted(buckets.items())
     ]
 
 
@@ -414,7 +428,7 @@ def graph():
                 "met": len(met),
                 "total": db.scalar(select(func.count()).select_from(Lexeme)),
             },
-            "retention_curve": _retention_curve(db, user.id),
+            "retention_curve": _retention_curve(db, user.id, user.settings_json),
             "milestones": _milestones_reached(db, user.id, figures["streak"]),
             "progress": figures,
         }

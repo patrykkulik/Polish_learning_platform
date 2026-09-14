@@ -26,6 +26,7 @@ from pl.models import Attempt, Card, Streak
 from pl.session import (
     MASTERY_STABILITY_DAYS,
     end_of_user_day,
+    settled_today,
     start_of_user_day,
     user_today,
 )
@@ -45,12 +46,20 @@ def _streak(db: Session, user_id: int) -> Streak:
 
 
 def debt_remaining(db: Session, user_id: int, settings: dict) -> int:
-    """Cards still due before the learner's local midnight."""
-    return db.scalar(
-        select(func.count())
-        .select_from(Card)
-        .where(Card.user_id == user_id, Card.due_at <= end_of_user_day(settings))
+    """Cards still due before the learner's local midnight.
+
+    Excludes cards that have already had their turn today, by the same
+    definition the composer uses — see `session.settled_today`. Criterion 12
+    makes clearing this figure the condition for the streak, so it has to be a
+    figure the learner's work can actually bring to zero.
+    """
+    settled = settled_today(db, user_id, settings)
+    due = db.scalars(
+        select(Card.id).where(
+            Card.user_id == user_id, Card.due_at <= end_of_user_day(settings)
+        )
     )
+    return sum(1 for card_id in due if card_id not in settled)
 
 
 def items_completed_today(db: Session, user_id: int, settings: dict) -> int:
@@ -89,15 +98,30 @@ def _apply_absence(db: Session, row: Streak, today: date) -> None:
         return
     if row.absence_settled_on == today:
         return
+    settled_through = row.absence_settled_on
     row.absence_settled_on = today
     db.flush()
 
     missed = (today - row.last_completed_on).days - 1
     if missed <= 0:
         return
-    spend = min(missed, row.freezes)
+
+    # Days an earlier visit during this same absence already paid for. Without
+    # this, `missed` is recomputed from `last_completed_on` every day while the
+    # freezes it spent are gone, so the break test compares the *total* gap
+    # against *this* visit's spend — and opening the app on a missed day breaks
+    # a streak that staying away would have kept. Two freezes covered two missed
+    # days either way; only the learner who showed up lost the streak.
+    covered = 0
+    if settled_through is not None and settled_through > row.last_completed_on:
+        covered = (settled_through - row.last_completed_on).days - 1
+    outstanding = missed - max(0, covered)
+    if outstanding <= 0:
+        return
+
+    spend = min(outstanding, row.freezes)
     row.freezes -= spend
-    if missed > spend:
+    if outstanding > spend:
         row.current = 0
 
 

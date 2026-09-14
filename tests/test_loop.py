@@ -16,10 +16,11 @@ from sqlalchemy.orm import sessionmaker
 from pl import models, schedule
 from pl.content import frames, ingest
 from pl.domain import ErrorClass
-from pl.models import Card, Form, Item, Lexeme, Node, NodeUnlock, Pattern
+from pl.models import Attempt, Card, Form, Item, Lexeme, Node, NodeUnlock, Pattern
 from pl.schedule import MORPH, PATTERN, ROUTING
 from pl.session import (
     DAILY_NEW_CAP,
+    DEBT_TOLERANCE,
     build_session,
     evaluate_unlocks,
     is_mastered,
@@ -27,6 +28,14 @@ from pl.session import (
 )
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
+def _day_start():
+    """The learner day these tests count in. `apply_diagnosis` needs the
+    boundary explicitly so it cannot silently pick a different one."""
+    from pl.session import start_of_user_day
+
+    return start_of_user_day({"tz": "UTC"})
 
 
 @pytest.fixture(scope="module")
@@ -134,7 +143,9 @@ def test_wrong_case_fails_the_rule_and_leaves_the_form_alone(db, user):
     diagnosis = classify(expected_slot(db, item), "kot")
     assert diagnosis.error_class is ErrorClass.ANIMACY
 
-    applied = schedule.apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    applied = schedule.apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, _day_start()
+    )
     assert PATTERN in applied and MORPH not in applied
     assert cards[MORPH].due_at == before
 
@@ -154,7 +165,9 @@ def test_wrong_ending_fails_the_form_and_passes_the_rule(db, user):
     assert diagnosis.error_class is ErrorClass.CASE_RIGHT_FORM_WRONG
 
     attempt = _attempt(db, user, item, "sklepa")
-    applied = schedule.apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    applied = schedule.apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, _day_start()
+    )
     assert applied[MORPH] == 1, "the form is wrong"
     assert applied[PATTERN] == 3, "but the case was chosen correctly"
 
@@ -168,7 +181,9 @@ def test_orthography_does_not_fail_the_grammar_card(db, user):
     assert diagnosis.error_class is ErrorClass.ORTHOGRAPHY
 
     attempt = _attempt(db, user, item, "kawe")
-    applied = schedule.apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    applied = schedule.apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, _day_start()
+    )
     assert set(applied.values()) == {2}, "Hard on both, failing neither"
 
 
@@ -180,7 +195,9 @@ def test_one_submission_produces_one_attempt_and_its_fan_out(db, user):
     item = _item(db, "okno", "Widzę")
     attempt = _attempt(db, user, item, "qwerty")
     diagnosis = classify(expected_slot(db, item), "qwerty")
-    schedule.apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    schedule.apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, _day_start()
+    )
     db.flush()
 
     reviews = db.scalars(
@@ -300,13 +317,44 @@ def test_new_cards_are_capped_per_day(db, user):
     assert stats["introduced"] <= DAILY_NEW_CAP
 
 
-def test_debt_is_served_before_anything_new(db, user):
-    """Acceptance criterion 9.
+def test_debt_past_the_bound_stops_anything_new(db, user):
+    """Acceptance criterion 9, as bounded.
 
-    With something overdue, the session must not introduce new material.
+    The criterion as first written forbade new material while *anything* was
+    overdue, and this test asserted that with a single overdue card. Measurement
+    replaced the rule with `DEBT_TOLERANCE`: one overdue card is now explicitly
+    allowed to introduce, so the old assertion described behaviour the code had
+    deliberately stopped having.
+
+    It went on passing anyway. The fixtures here are module-scoped, so by the
+    time this ran, earlier tests had left well past five cards due and the day's
+    budget already spent — the assertion held for reasons that had nothing to do
+    with the sentence above it, and failed the moment it was run on its own.
+    Both are fixed here: the backlog is built past the bound explicitly, and the
+    budget is freed so that "introduced nothing" can only mean the bound bit.
     """
-    card = db.scalar(select(Card).where(Card.user_id == user.id))
-    card.due_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=2)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    # Build the cards this test needs rather than inheriting whatever earlier
+    # tests happened to leave. Depending on that is the other half of why the
+    # old version passed: it ran green in a full suite and failed on its own.
+    for item in db.scalars(select(Item).limit(DEBT_TOLERANCE + 3)):
+        schedule.cards_for_item(db, user.id, item)
+    db.commit()
+
+    cards = list(db.scalars(select(Card).where(Card.user_id == user.id)))
+    assert len(cards) > DEBT_TOLERANCE, "too few cards to build a backlog past the bound"
+    for index, card in enumerate(cards):
+        card.due_at = (
+            now - timedelta(days=2) if index <= DEBT_TOLERANCE else now + timedelta(days=30)
+        )
+        # Yesterday's introductions, so today's cap is not already spent — or
+        # this test passes without the bound doing anything.
+        if card.created_at is not None:
+            card.created_at = now - timedelta(days=1)
+    # A backlog is work left over from previous days; a card whose schedule
+    # already moved today is not debt.
+    for attempt in db.scalars(select(Attempt).where(Attempt.user_id == user.id)):
+        attempt.created_at = now - timedelta(days=1)
     db.commit()
 
     _items, stats = build_session(db, user.id, {"tz": "UTC"}, limit=20)
@@ -490,3 +538,44 @@ def test_restratification_that_orphans_items_is_refused(db, monkeypatch):
     with pytest.raises(AssertionError, match="stratification"):
         frames.ensure_patterns(db)
     db.rollback()
+
+
+# ------------------------------------------------------------------- schema
+
+
+def test_a_column_added_to_a_model_reaches_an_existing_database(tmp_path):
+    """`create_all` creates tables; it never alters one it finds.
+
+    Alembic is deferred, which is a defensible call only while adding a column
+    still reaches a database that already exists. It did not: two columns were
+    added to `card` and `streak` in this branch, and on any learner's existing
+    `polish.db` they were simply absent. The failure is delayed and misleading —
+    the content build touches none of those tables and reports success, then the
+    first page load raises `no such column`, and the only remedy on offer was
+    deleting every schedule, unlock and streak the learner had.
+
+    Asserted generically rather than on the two columns by name, so the next
+    column added is covered by the test that exists rather than by the one
+    somebody remembers to write.
+    """
+    from sqlalchemy import inspect, text
+
+    from pl import db as database
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}", future=True)
+    models.Base.metadata.create_all(engine)
+    # An "old" database: the same schema, minus a column the model has since
+    # grown. Dropping one is the cheapest way to build that shape honestly.
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE card DROP COLUMN created_at"))
+    assert "created_at" not in {c["name"] for c in inspect(engine).get_columns("card")}
+
+    original, database.engine = database.engine, engine
+    try:
+        database.add_missing_columns()
+        repaired = {c["name"] for c in inspect(engine).get_columns("card")}
+        assert "created_at" in repaired, "an added column never reached the database"
+        database.add_missing_columns()  # idempotent: a second run must be a no-op
+    finally:
+        database.engine = original
+        engine.dispose()

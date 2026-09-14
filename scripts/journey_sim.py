@@ -3,7 +3,7 @@
     uv run python scripts/journey_sim.py [days] [session-limit] [accuracy]
     uv run python scripts/journey_sim.py 60 20 0.85
 
-The headline content counts — 1,024 items, 76 lexemes, 13 nodes — say what was
+The headline content counts — 983 items, 82 lexemes, 13 nodes — say what was
 built. They say nothing about what a learner *meets*, and the two turned out to
 differ by a factor of fifty: before the composition order was fixed, a diligent
 learner answered 1,190 questions over sixty days and saw twenty distinct items,
@@ -37,11 +37,12 @@ from sqlalchemy.orm import sessionmaker
 from pl import models
 from pl import schedule as _schedule
 from pl import session as _session
+from pl import streak as streaks
 from pl.api import grade_item
 from pl.content import frames, ingest
 from pl.models import Attempt, Card, Form, Item, Lexeme, Node, NodeUnlock
 from pl.schedule import apply_diagnosis
-from pl.session import build_session, evaluate_unlocks
+from pl.session import build_session, evaluate_unlocks, start_of_user_day
 
 #: A fixed point to start from. Arbitrary, but it must be *fixed*: an earlier
 #: version of this file read the real clock and added the simulated day to it,
@@ -114,7 +115,7 @@ def wrong_answer(db, item: Item, rng: random.Random) -> str:
 
 def simulate(
     days: int, limit: int, accuracy: float, seed: int = 7, inspect=None
-) -> list[dict]:
+) -> tuple[list[dict], dict]:
     """Run the loop for `days`, answering correctly `accuracy` of the time.
 
     `inspect`, if given, is called with `(db, user)` once the last day is over
@@ -175,15 +176,23 @@ def simulate(
             db.add(attempt)
             db.flush()
             apply_diagnosis(
-                db, user.id, item, grade_item(db, item, submitted), attempt.id
+                db, user.id, item, grade_item(db, item, submitted), attempt.id,
+                start_of_user_day(settings),
             )
         db.commit()
         evaluate_unlocks(db, user.id)
+        # Finish the day the way the review page does. Without this the
+        # instrument cannot see criterion 12 at all — which is how a defect that
+        # made the streak unearnable on every productive day went unmeasured
+        # through a ninety-day simulation.
+        streak_row = streaks.record_activity(db, user.id, settings)
 
         rows.append(
             {
                 "day": day,
                 "served": len(picked),
+                "streak": streak_row.current,
+                "debt_after": streaks.debt_remaining(db, user.id, settings),
                 "new_cards": stats["introduced"],
                 "new_items": stats["introduced_items"],
                 "debt": stats["debt_total"],
@@ -227,15 +236,15 @@ def main() -> None:
     )
     print(f"learner: {days} days, {limit} per session, {accuracy:.0%} accuracy\n")
     print(
-        f"{'day':>4} {'served':>7} {'new':>5} {'debt':>6} {'seen':>6} "
-        f"{'lexemes':>8} {'nodes':>6} {'cards':>6}"
+        f"{'day':>4} {'served':>7} {'new':>5} {'debt':>6} {'left':>5} {'seen':>6} "
+        f"{'lexemes':>8} {'nodes':>6} {'cards':>6} {'streak':>7}"
     )
     for r in rows:
         if r["day"] <= 10 or r["day"] % 5 == 0 or r["day"] == days:
             print(
                 f"{r['day']:>4} {r['served']:>7} {r['new_items']:>5} {r['debt']:>6} "
-                f"{r['items_seen']:>6} {r['lexemes']:>8} {r['unlocked']:>6} "
-                f"{r['cards']:>6}"
+                f"{r['debt_after']:>5} {r['items_seen']:>6} {r['lexemes']:>8} "
+                f"{r['unlocked']:>6} {r['cards']:>6} {r['streak']:>7}"
             )
 
     last = rows[-1]
@@ -249,6 +258,15 @@ def main() -> None:
     print(f"  exercise types met     {totals['by_type']}")
     introduced = [r["day"] for r in rows if r["new_items"] > 0]
     print(f"  last day new material was introduced: {max(introduced, default=0)}")
+    # Criterion 12, which this instrument could not see until it started
+    # finishing each day the way the review page does. A streak stuck at zero
+    # across a diligent ninety days means the day's debt is never clearing, and
+    # that is a defect however healthy the coverage numbers above look.
+    earned = sum(1 for r in rows if r["streak"] > 0)
+    print(
+        f"  streak                 {last['streak']:>5} days, earned on "
+        f"{earned} of {days}"
+    )
 
 
 if __name__ == "__main__":

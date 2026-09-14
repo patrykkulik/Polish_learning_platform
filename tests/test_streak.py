@@ -17,13 +17,13 @@ import warnings
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from pl import models, schedule, streak as streaks
 from pl.content import frames, ingest
-from pl.models import Attempt, AppUser, Item, Streak
+from pl.models import Attempt, AppUser, Card, Item, Streak
 from pl.session import user_today
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -296,3 +296,96 @@ def test_progress_reports_retention_not_only_the_streak(db, user):
     figures = streaks.progress(db, user.id, SETTINGS)
     assert figures["tracked"] > 0
     assert figures["retained"] == figures["tracked"]
+
+
+# ------------------------------------------- criterion 12, against real cards
+
+
+def test_a_learner_who_finishes_a_real_session_earns_the_streak(db, user):
+    """Criterion 12, against a learner who actually owns cards.
+
+    **This is the test whose absence let the streak break.** Every other
+    positive test in this file answers items without creating a single `Card`,
+    so `debt_remaining` counts nothing and `debt_clear` is true for the wrong
+    reason — the file's own docstring names "a learner who has drifted into
+    holding no cards" as the hazard, and then builds every happy path on one.
+
+    What that hid: FSRS puts a new card's first steps minutes apart, so a day's
+    work leaves cards due within the hour. A rule capping each card at one
+    schedule advance per day then made the day's debt unclearable by any amount
+    of answering, and the streak unearnable on exactly the days the learner met
+    new material.
+
+    Nothing here rewrites `due_at` or `created_at`. Hand-setting the schedule is
+    precisely what let the harness disagree with the scheduler.
+    """
+    from pl.api import grade_item
+    from pl.session import build_session, start_of_user_day
+
+    picked, _ = build_session(db, user.id, SETTINGS, limit=GOAL + 2)
+    assert len(picked) >= GOAL, "the session was too short to meet the daily goal"
+
+    for item in picked:
+        attempt = Attempt(
+            user_id=user.id,
+            item_id=item.id,
+            submitted=item.expected_answer,
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        db.add(attempt)
+        db.flush()
+        schedule.apply_diagnosis(
+            db,
+            user.id,
+            item,
+            grade_item(db, item, item.expected_answer),
+            attempt.id,
+            start_of_user_day(SETTINGS),
+        )
+    db.commit()
+
+    held = db.scalar(
+        select(func.count()).select_from(Card).where(Card.user_id == user.id)
+    )
+    assert held > 0, (
+        "the session created no cards, so this test cannot see criterion 12 at "
+        "all — which is the exact blind spot it exists to close"
+    )
+
+    row = streaks.record_activity(db, user.id, SETTINGS)
+    assert row.current == 1, (
+        "a learner who answered a whole session correctly did not earn the "
+        f"streak; {streaks.debt_remaining(db, user.id, SETTINGS)} cards are "
+        f"still counted as due after the work that was supposed to clear them"
+    )
+
+
+def test_opening_the_app_mid_gap_costs_no_more_than_staying_away(db, user):
+    """Showing up must never be punished harder than staying away.
+
+    `missed` is recomputed from `last_completed_on` on every later day, while
+    the freezes an earlier visit already spent are gone. The break test then
+    compared the *whole* gap against *this* visit's spend, so a learner who
+    opened the app during their absence paid a freeze for it and then lost the
+    streak anyway — while the learner who stayed on the sofa kept it. Same gap,
+    same freezes, opposite outcomes.
+    """
+    visitor = _returning_learner(db, user, gap_days=3, freezes=2)
+    # What an earlier visit, one day into the gap, would have left behind.
+    visitor.absence_settled_on = user_today(SETTINGS) - timedelta(days=1)
+    visitor.freezes = 1
+    db.commit()
+    streaks.record_activity(db, user.id, SETTINGS)
+    showed_up = (visitor.current, visitor.freezes)
+
+    db.query(Streak).delete()
+    db.commit()
+    absentee = _returning_learner(db, user, gap_days=3, freezes=2)
+    streaks.record_activity(db, user.id, SETTINGS)
+    stayed_away = (absentee.current, absentee.freezes)
+
+    assert showed_up == stayed_away, (
+        f"opening the app mid-gap left the learner at {showed_up} while staying "
+        f"away left them at {stayed_away} — the same absence, charged twice"
+    )
+    assert showed_up[0] == 5, "two freezes cover a two-day gap; the streak stands"

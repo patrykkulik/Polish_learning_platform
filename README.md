@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 236 passing | — |
+| Test suite | 273 passing | — |
 
 Measured while proving it:
 
@@ -44,9 +44,9 @@ announced, and one announced twice teaches the learner the number is decorative.
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
 aspect taught from the first verb as pairs. 82 lexemes, 25 frames, 32 authored
-sentences, **983 items** across six exercise types — cloze (614),
-free translation (112), multiple choice (107, covering both form selection and
-meaning recall), preposition drill (27), listening dictation (26) and aspect
+sentences, **983 items** across six exercise types — cloze (673),
+free translation (123), multiple choice (113, covering both form selection and
+meaning recall), preposition drill (30), listening dictation (26) and aspect
 choice (18) — all generated with no LLM and no human review. Multi-slot items
 bring the two error classes a single blank cannot produce: `WORD_ORDER` and
 `MISSING_CONSTITUENT`.
@@ -133,6 +133,24 @@ low-traffic card in the same node reached 112 on eight reviews. The cards the
 learner practised most were the least able to master. `ONE_REVIEW_PER_DAY`
 advances a card at most once daily; later encounters still record their attempt
 and error events, so remediation still sees everything that went wrong.
+
+**And it made the streak unearnable, which review caught and no test did.**
+Suppressing a card's schedule advance left `due_at` in the past, and FSRS puts a
+new card's first steps minutes apart — so on any day the learner met new
+material the debt never reached zero, and criterion 12 makes clearing it the
+condition for the streak. The learner answered, and the due counter did not
+move. A card that has already had its turn today is no longer counted as debt
+nor re-offered, by one definition (`session.settled_today`) that the composer and
+the streak both read. Measured over thirty simulated days at 85% accuracy: the
+streak is earned on 13 days, against 4 before.
+
+Every positive streak test answered items without creating a single card, so
+`debt_remaining` counted nothing and the condition passed for the wrong reason —
+and `journey_sim.py` never called `record_activity` at all, so the ninety-day
+instrument could not see criterion 12 either. Both are fixed: the simulation now
+finishes each day the way the review page does and reports the streak, and
+`test_a_learner_who_finishes_a_real_session_earns_the_streak` drives the whole
+loop without hand-writing a single `due_at`.
 
 `MASTERY_ALLOWED_SHORTFALL = 1` implements the design's own worked example, which
 the code never delivered: it says a four-stratum node means "three of four, and

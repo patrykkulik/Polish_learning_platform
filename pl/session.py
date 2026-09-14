@@ -324,6 +324,22 @@ def evaluate_unlocks(db: Session, user_id: int) -> list[str]:
 # --------------------------------------------------------------- composition
 
 
+def settled_today(db: Session, user_id: int, settings: dict) -> set[int]:
+    """Cards that have already had their turn during the learner's day.
+
+    One definition, read by the composer and by the streak, so "still due" means
+    the same thing to the queue the learner works through and to the condition
+    that rewards them for emptying it. They disagreed once and the streak became
+    unearnable; a single helper is what stops that recurring.
+
+    Empty when `ONE_REVIEW_PER_DAY` is off, because then answering a card again
+    does move it and it is genuinely still due.
+    """
+    if not schedule.ONE_REVIEW_PER_DAY:
+        return set()
+    return schedule.cards_advanced_since(db, user_id, start_of_user_day(settings))
+
+
 def known_lexemes(db: Session, user_id: int) -> set[int]:
     """The lexemes the learner holds a lexical or morph card for.
 
@@ -586,12 +602,23 @@ def build_session(
         bucket.append(item)
         return True
 
-    # 1 — debt
-    due = db.scalars(
-        select(Card)
-        .where(Card.user_id == user_id, Card.due_at <= horizon)
-        .order_by(Card.due_at)
-    ).all()
+    # 1 — debt. A card whose schedule has already advanced today is not debt: it
+    # has had its turn, and under `ONE_REVIEW_PER_DAY` answering it again cannot
+    # move it. Counting it would leave the learner with a due figure that no
+    # amount of work brings down, and — because criterion 12 requires the day's
+    # debt cleared — a streak that cannot be earned on any day they meet new
+    # material. FSRS puts a new card's first steps minutes apart, so that is
+    # every productive day.
+    settled = settled_today(db, user_id, settings)
+    due = [
+        card
+        for card in db.scalars(
+            select(Card)
+            .where(Card.user_id == user_id, Card.due_at <= horizon)
+            .order_by(Card.due_at)
+        )
+        if card.id not in settled
+    ]
     known = known_lexemes(db, user_id)
     for card in due:
         for item in _items_for_card(db, card, known):

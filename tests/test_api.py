@@ -372,3 +372,59 @@ def test_a_second_item_of_the_same_rule_says_it_counted(client):
         "the second answer moved no rule card and did not say why — the learner "
         "sees it as 'untouched' and reads that as not counting"
     )
+
+
+def test_the_retention_curve_counts_hard_as_a_recall(client):
+    """The curve is the figure that survives a broken streak, so it has to be
+    right — and it was asserted only in its empty state.
+
+    `Again` is the only failure. A `Hard` is a recall: it is what a dropped
+    diacritic scores, and the learner who wrote `robie` for `robię` had the
+    grammar and missed the keyboard. Counting that as forgetting would make the
+    curve a measure of typing.
+    """
+    http, Session = client
+    with Session() as db:
+        correct = db.scalar(
+            select(Item).where(Item.exercise_type == "cloze", Item.pattern_id.isnot(None))
+        )
+        # A different lexeme, so the two answers do not share a card and the
+        # second is not suppressed as already-advanced-today.
+        other = db.scalar(
+            select(Item).where(
+                Item.exercise_type == "cloze",
+                Item.target_form_id != correct.target_form_id,
+                Item.pattern_id != correct.pattern_id,
+            )
+        )
+        assert other is not None
+        answers = [(correct.id, correct.expected_answer), (other.id, "zzzzzz")]
+
+    for item_id, submitted in answers:
+        http.post("/api/submit", json={"item_id": item_id, "answer": submitted})
+
+    curve = http.get("/api/graph").json()["retention_curve"]
+    assert len(curve) == 1, f"one day of work should be one bar, got {curve}"
+    day = curve[0]
+    assert day["reviews"] > day["recalled"] > 0, (
+        f"expected some recalled and some not, got {day}"
+    )
+
+
+def test_a_standing_reports_the_last_threshold_passed_and_the_next(client):
+    """`_standing` was tested only at zero, where both interesting branches are
+    invisible: a non-zero `reached`, and the terminal `next is None` once every
+    threshold is behind the learner. Both change how the two clients render —
+    the progress page pins the meter at 100% and the session screen drops the
+    standing entirely — so the one case where the feature changes shape was the
+    one case uncovered.
+    """
+    from pl.api import RETAINED_MILESTONES, STREAK_MILESTONES, _standing
+
+    assert _standing(0, STREAK_MILESTONES) == {"value": 0, "reached": 0, "next": 3}
+    assert _standing(30, STREAK_MILESTONES) == {"value": 30, "reached": 30, "next": 60}
+    assert _standing(31, STREAK_MILESTONES) == {"value": 31, "reached": 30, "next": 60}
+
+    finished = _standing(10_000, RETAINED_MILESTONES)
+    assert finished["next"] is None, "a learner past every threshold has no next one"
+    assert finished["reached"] == max(RETAINED_MILESTONES)

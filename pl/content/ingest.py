@@ -411,6 +411,10 @@ def stale_items(db: Session) -> list:
         }
     finally:
         canonical.close()
+        # The throwaway engine holds a live connection until it is disposed, and
+        # this function is called once per build — cheap to get right, awkward to
+        # notice later.
+        engine.dispose()
 
     return [
         item
@@ -450,7 +454,14 @@ def main() -> None:
             f" generated {counts.get('generated', 0)})"
         )
 
-        stale = stale_items(session)
+        # Diagnostic only, and it runs the whole build a second time — so its
+        # failure must not be reported as a failure of the build that already
+        # succeeded and committed above.
+        try:
+            stale = stale_items(session)
+        except Exception as exc:  # noqa: BLE001 — a report may not fail a build
+            print(f"\n  could not check for stale items: {exc}")
+            stale = []
         if stale:
             print(
                 f"\n  {len(stale)} items are still stored but are no longer produced"

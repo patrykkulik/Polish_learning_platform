@@ -25,7 +25,7 @@ from pl.content import frames, ingest
 from pl.grade import classify
 from pl.models import Attempt, Card, Form, Item, Node, Pattern
 from pl.schedule import apply_diagnosis
-from pl.session import build_session, evaluate_unlocks
+from pl.session import build_session, evaluate_unlocks, start_of_user_day
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -50,7 +50,9 @@ def answer(db, user, item, submitted: str | None = None):
     db.add(attempt)
     db.flush()
     diagnosis = classify(expected_slot(db, item), submitted)
-    apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, start_of_user_day(SETTINGS)
+    )
     db.commit()
     return diagnosis
 
@@ -100,20 +102,6 @@ def _let_time_pass(db, days: int = 1):
     for attempt in db.scalars(select(Attempt)):
         attempt.created_at -= timedelta(days=days)
     db.commit()
-
-
-@pytest.fixture(autouse=True)
-def _repeatable_fsrs_fuzz():
-    """FSRS jitters every interval it computes, drawing on the *global* RNG.
-
-    Left unseeded, a longitudinal test's outcome depends on how much randomness
-    the tests that ran before it happened to consume — so the same test passes
-    on its own and fails in a full run, or the other way round, and neither
-    result means anything. Seeding costs nothing, keeps the fuzz switched on so
-    the behaviour under test is production's, and removes an entire class of
-    order-dependent flake.
-    """
-    random.seed(20260827)
 
 
 @pytest.fixture
@@ -558,7 +546,9 @@ def _score(db, user, item, submitted):
     db.add(attempt)
     db.flush()
     diagnosis = grade_item(db, item, submitted)
-    applied = apply_diagnosis(db, user.id, item, diagnosis, attempt.id)
+    applied = apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, start_of_user_day(SETTINGS)
+    )
     db.commit()
     return diagnosis, applied
 
@@ -1016,7 +1006,14 @@ def test_a_pattern_card_does_not_test_the_same_word_every_time(db, user):
 
 
 def _backlog(db, user, size: int) -> None:
-    """Leave exactly `size` cards overdue, defer the rest, and make today new."""
+    """Leave exactly `size` cards overdue, defer the rest, and make today new.
+
+    Back-dates the attempt history as well as the cards. A backlog is work left
+    over from *previous* days, and a card whose schedule already advanced today
+    is not debt — it has had its turn and answering it again cannot move it. Left
+    dated today, these cards would be filtered out of the debt queue and the
+    helper would build a backlog of nothing.
+    """
     now = datetime.now(UTC).replace(tzinfo=None)
     cards = list(db.scalars(select(Card).where(Card.user_id == user.id)))
     assert len(cards) >= size, f"only {len(cards)} cards exist; need {size}"
@@ -1025,6 +1022,8 @@ def _backlog(db, user, size: int) -> None:
         # Yesterday's introductions, so today's budget starts unspent.
         if card.created_at is not None:
             card.created_at -= timedelta(days=1)
+    for attempt in db.scalars(select(Attempt).where(Attempt.user_id == user.id)):
+        attempt.created_at -= timedelta(days=1)
     db.commit()
 
 
@@ -1119,6 +1118,11 @@ def test_a_four_stratum_node_lets_one_weak_class_be_carried():
 
     assert strata_needed(4) == 3, "the design's own example: three of four"
     assert strata_needed(3) == 2
+    # The value the whole N03 content fix turns on: a second paradigm class must
+    # *widen* a one-stratum node, not narrow it. Under the fraction alone this is
+    # 2, which would re-close N03 and the six nodes behind it with every test
+    # still green.
+    assert strata_needed(2) == 1, "a second stratum must widen the node"
     assert strata_needed(1) == 1, "a node is not mastered by mastering nothing"
     # Wide nodes are untouched: the fraction is already the binding constraint.
     assert strata_needed(5) == 4
@@ -1167,10 +1171,21 @@ def test_a_rule_card_advances_once_a_day_however_often_its_rule_comes_up(db, use
         f"is being set by how often the rule comes up, not by recall"
     )
 
-    # The evidence is still there; only the scheduling is suppressed.
+    # The evidence is still there; only the scheduling is suppressed. This is
+    # the stated reason the suppression is safe — remediation reads `error_event`
+    # to find the weakest node — so it is asserted rather than assumed.
     assert db.scalar(
         select(func.count()).select_from(Attempt).where(Attempt.user_id == user.id)
     ) == 4, "attempts must still be recorded for every answer"
+
+    from pl.models import ErrorEvent
+
+    errors_before = db.scalar(select(func.count()).select_from(ErrorEvent))
+    answer(db, user, drilled[0], submitted="zzzzzz")
+    assert db.scalar(select(func.count()).select_from(ErrorEvent)) == errors_before + 1, (
+        "a wrong answer on a card already advanced today recorded no error event, "
+        "so remediation cannot see the mistake the learner just made"
+    )
 
     # Cards that are *not* shared still move once each.
     forms = {i.target_form_id for i in drilled}
