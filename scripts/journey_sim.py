@@ -137,7 +137,9 @@ def simulate(
     frames.build(db)
     user = ingest.ensure_user(db)
 
-    settings = {"tz": "UTC", "daily_goal_items": limit}
+    # The goal the app gives a new learner, not the session length. Setting it to
+    # `limit` measured a goal the product never had once the two differed.
+    settings = dict(user.settings_json, tz="UTC")
     rng = random.Random(seed)
     # FSRS applies a few percent of random "fuzz" to every interval it computes,
     # deliberately, to stop reviews piling onto one day — and it draws that from
@@ -199,6 +201,7 @@ def simulate(
                 "day": day,
                 "served": len(picked),
                 "streak": streak_row.current,
+                "advanced": streak_row.last_completed_on == _session.user_today(settings),
                 "debt_after": streaks.debt_remaining(db, user.id, settings),
                 "new_cards": stats["introduced"],
                 "new_items": stats["introduced_items"],
@@ -272,10 +275,14 @@ def main() -> None:
     # finishing each day the way the review page does. A streak stuck at zero
     # across a diligent ninety days means the day's debt is never clearing, and
     # that is a defect however healthy the coverage numbers above look.
-    earned = sum(1 for r in rows if r["streak"] > 0)
+    #
+    # Days it *advanced*, not days it stood above zero. The second counts a
+    # streak carried by freezes or merely not yet broken, and was once quoted as
+    # the first.
+    advanced = sum(1 for r in rows if r["advanced"])
     print(
-        f"  streak                 {last['streak']:>5} days, earned on "
-        f"{earned} of {days}"
+        f"  streak                 {last['streak']:>5} days, advanced on "
+        f"{advanced} of {days}"
     )
 
 

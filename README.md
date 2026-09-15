@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 273 passing | — |
+| Test suite | 278 passing | — |
 
 Measured while proving it:
 
@@ -153,7 +153,8 @@ condition for the streak. The learner answered, and the due counter did not
 move. A card that has already had its turn today is no longer counted as debt
 nor re-offered, by one definition (`session.settled_today`) that the composer and
 the streak both read. Measured over thirty simulated days at 85% accuracy: the
-streak is earned on 13 days, against 4 before.
+streak advances on 6 days, against 1 before. (First published as "13 against 4",
+which counted days the streak stood above zero; re-measured at the same commit.)
 
 Every positive streak test answered items without creating a single card, so
 `debt_remaining` counted nothing and the condition passed for the wrong reason —
@@ -197,6 +198,19 @@ The two corrections disagree on the same word, and their order matters: `we wsi`
 is the correct way to say the *wrong* preposition, and the right answer is
 `na wsi`. Expected surfaces come from SGJP and cannot be wrong; every word
 around them is authored, and nothing was checking that.
+
+**One wrong case cost the day's streak, and the instrument blamed the goal.**
+`kot` for `kota` fails the rule and, by criterion 11, leaves the form card alone.
+When that form card was due, the composer had served its one item for it and
+nothing else in the session could clear it — so the debt condition failed on
+about 55 days in 90 at 85% accuracy. `journey_sim` hid this by reporting days
+the streak stood above zero as days it was earned: "36 of 90" was 21. A card now
+counts as having had its turn when an item that may score it was answered today,
+scored or not. And the default daily goal is `DAILY_NEW_CAP`, because a day with
+nothing due offers at most that many items — the cap counts cards, and some
+items cost two. Six seeds × ninety days, median days the
+streak advanced: **25.5 → 86.5** at 85% accuracy and **2 → 56** for a flawless
+learner, with items met, nodes opened and the daily cap identical.
 
 ## Quick start
 

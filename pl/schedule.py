@@ -230,9 +230,11 @@ def cards_advanced_since(db: Session, user_id: int, since: datetime) -> set[int]
     the streak, the daily goal and the debt horizon for every learner not living
     in UTC.
 
-    Returned as a set of ids rather than a per-card predicate because the answer
-    is needed three times over: to decide what to score, what counts as debt,
-    and what the session may re-offer. Those three must agree.
+    Returned as a set of ids rather than a per-card predicate because the
+    composer asks once per session. What counts as debt and what the session may
+    re-offer is `session.settled_today`, which starts from this set and adds the
+    cards an answer left unscored — so a card can have had its turn without its
+    schedule moving, and a later item the same day may still score it.
     """
     return set(
         db.scalars(

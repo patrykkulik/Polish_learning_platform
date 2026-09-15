@@ -28,6 +28,7 @@ from pl.models import (
     Sense,
     Streak,
 )
+from pl.session import DAILY_NEW_CAP
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -363,7 +364,7 @@ def ensure_user(db: Session, email: str | None = None) -> AppUser:
         user = AppUser(
             email=email,
             created_at=datetime.now(UTC),
-            settings_json={"tz": "Europe/London", "daily_goal_items": 20},
+            settings_json={"tz": "Europe/London", "daily_goal_items": DAILY_NEW_CAP},
         )
         db.add(user)
         db.flush()

@@ -23,7 +23,7 @@ from sqlalchemy.pool import StaticPool
 
 from pl import models, schedule, streak as streaks
 from pl.content import frames, ingest
-from pl.models import Attempt, AppUser, Card, Item, Streak
+from pl.models import Attempt, AppUser, Card, Form, Item, Lexeme, Streak
 from pl.session import user_today
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -88,13 +88,22 @@ def _answer(db, user, count: int) -> None:
 
 
 def _owe_a_card(db, user) -> None:
-    """Give the learner one overdue card, so the debt condition fails."""
-    item = db.scalar(select(Item))
+    """Give the learner one overdue card, so the debt condition fails.
+
+    Owed on an item the learner has not answered today. Answering an item gives
+    its cards their turn for the day, scored or not, so a card owed on an item
+    `_answer` already covered is not work left undone.
+    """
+    item = db.scalar(select(Item).order_by(Item.id.desc()))
     cards = schedule.cards_for_item(db, user.id, item)
     assert cards, "the item scored nothing, so it created no debt"
     for card in cards.values():
         card.due_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
     db.commit()
+    assert streaks.debt_remaining(db, user.id, SETTINGS) > 0, (
+        "the owed card shares a referent with an item answered today, so it "
+        "has already had its turn and this learner owes nothing"
+    )
 
 
 # --------------------------------------------------- both conditions, or neither
@@ -357,6 +366,143 @@ def test_a_learner_who_finishes_a_real_session_earns_the_streak(db, user):
         "a learner who answered a whole session correctly did not earn the "
         f"streak; {streaks.debt_remaining(db, user.id, SETTINGS)} cards are "
         f"still counted as due after the work that was supposed to clear them"
+    )
+
+
+def _cloze(db, lemma: str, fragment: str) -> Item:
+    for item in db.scalars(select(Item).where(Item.exercise_type == "cloze")):
+        form = db.get(Form, item.target_form_id)
+        lexeme = db.get(Lexeme, form.lexeme_id) if form else None
+        if lexeme and lexeme.lemma == lemma and fragment in item.prompt:
+            return item
+    raise LookupError(f"no cloze item for {lemma} / {fragment}")
+
+
+def test_a_due_card_the_answer_left_unscored_has_had_its_turn(db, user):
+    """Criterion 12 against criterion 11, which it was quietly contradicting.
+
+    `kot` for `kota` fails the rule and, by design, leaves the form card's
+    schedule alone. But the form card was due, the composer serves one item per
+    due card, and nothing else in the session could move it — so the day's debt
+    could not reach zero, and one wrong case cost the streak. Over ninety
+    simulated days at 85% accuracy this, not the goal, is what failed the streak
+    on about 55 days of 90.
+    """
+    from pl.api import grade_item
+    from pl.domain import ErrorClass
+    from pl.schedule import MORPH
+    from pl.session import build_session, start_of_user_day
+
+    item = _cloze(db, "kot:Sm2", "Widzę")
+    cards = schedule.cards_for_item(db, user.id, item)
+    overdue = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+    for card in cards.values():
+        card.due_at = overdue
+    db.commit()
+    assert streaks.debt_remaining(db, user.id, SETTINGS) == len(cards)
+
+    attempt = Attempt(
+        user_id=user.id,
+        item_id=item.id,
+        submitted="kot",
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.add(attempt)
+    db.flush()
+    diagnosis = grade_item(db, item, "kot")
+    assert diagnosis.error_class is ErrorClass.ANIMACY
+    applied = schedule.apply_diagnosis(
+        db, user.id, item, diagnosis, attempt.id, start_of_user_day(SETTINGS)
+    )
+    db.commit()
+    assert MORPH not in applied, "the premise: this answer leaves the form unscored"
+    assert cards[MORPH].due_at == overdue, "criterion 11 must still hold"
+
+    assert streaks.debt_remaining(db, user.id, SETTINGS) == 0, (
+        "the learner answered the item that was due and the due figure did not "
+        "move — the streak is lost to a card the routing table chose not to score"
+    )
+    _, stats = build_session(db, user.id, SETTINGS)
+    assert stats["debt_total"] == 0, (
+        "the composer and the streak disagree about what is still due"
+    )
+
+
+def test_a_new_learner_can_meet_the_goal_on_a_day_with_nothing_due(db):
+    """The default goal must fit inside what a clean day offers.
+
+    With nothing due a session is introduction only, and introduction is capped
+    at `DAILY_NEW_CAP` cards — ten — while the goal stood at twenty. A learner who
+    had caught up entirely could not meet it, however well they answered: a
+    flawless learner advanced the streak on 2 days of 90.
+    """
+    from pl.api import grade_item
+    from pl.session import build_session, start_of_user_day
+
+    # The settings the app gives a new learner, read from where it writes them.
+    empty = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(empty)
+    with sessionmaker(bind=empty, future=True)() as fresh:
+        settings = dict(ingest.ensure_user(fresh).settings_json, tz="UTC")
+    empty.dispose()
+
+    learner = AppUser(
+        created_at=datetime.now(UTC).replace(tzinfo=None), settings_json=settings
+    )
+    db.add(learner)
+    db.commit()
+
+    # The API's default session length.
+    picked, stats = build_session(db, learner.id, settings)
+    assert stats["debt_total"] == 0, "not a clean day"
+    for item in picked:
+        attempt = Attempt(
+            user_id=learner.id,
+            item_id=item.id,
+            submitted=item.expected_answer,
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        db.add(attempt)
+        db.flush()
+        schedule.apply_diagnosis(
+            db,
+            learner.id,
+            item,
+            grade_item(db, item, item.expected_answer),
+            attempt.id,
+            start_of_user_day(settings),
+        )
+    db.commit()
+
+    row = streaks.record_activity(db, learner.id, settings)
+    assert row.current == 1, (
+        f"the learner answered all {len(picked)} items a clean day offered, "
+        f"correctly, against a goal of {settings['daily_goal_items']}"
+    )
+
+
+def test_a_learner_with_no_goal_set_is_held_to_the_daily_cap(db):
+    """The fallback goal must not drift from the default one.
+
+    `ensure_user` always writes a goal, so nothing reaches this fallback today —
+    which is exactly how it could go on saying twenty while the stored default
+    said ten, with every test passing.
+    """
+    from pl.session import DAILY_NEW_CAP
+
+    settings = {"tz": "UTC"}
+    learner = AppUser(
+        created_at=datetime.now(UTC).replace(tzinfo=None), settings_json=settings
+    )
+    db.add(learner)
+    db.commit()
+
+    _answer(db, learner, DAILY_NEW_CAP - 1)
+    assert streaks.record_activity(db, learner.id, settings).current == 0
+
+    _answer(db, learner, DAILY_NEW_CAP)
+    assert streaks.record_activity(db, learner.id, settings).current == 1, (
+        f"{DAILY_NEW_CAP} items met the default goal but not the fallback"
     )
 
 

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from pl.models import Attempt, Card, Streak
 from pl.session import (
+    DAILY_NEW_CAP,
     MASTERY_STABILITY_DAYS,
     end_of_user_day,
     settled_today,
@@ -135,7 +136,7 @@ def record_activity(db: Session, user_id: int, settings: dict) -> Streak:
 
     _apply_absence(db, row, today)
 
-    goal = settings.get("daily_goal_items", 20)
+    goal = settings.get("daily_goal_items", DAILY_NEW_CAP)
     goal_met = items_completed_today(db, user_id, settings) >= goal
     debt_clear = debt_remaining(db, user_id, settings) == 0
 

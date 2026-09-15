@@ -709,6 +709,11 @@ debt. Both need an explicit ordering to be implementable.
   is met. Spec §6.2 gives only the first, which advances the streak for free on a day with no due
   cards — including day one, and including a learner who has drifted into having nothing due.
   Requiring both makes §6.1 and §6.2 each load-bearing instead of redundant.
+- **Design choice, added after measurement:** the default goal is `DAILY_NEW_CAP` items — the most a day
+  with nothing due can offer, since the cap counts cards and an item costs one or two — so such a day
+  can usually meet it, where a goal of twenty never could; and "the day's due cards are cleared" means each has had its turn — an
+  item that may score it was answered — not that each was scored, because the routing table
+  deliberately leaves some cards unscored on some errors. See §"Known defects".
 - **Design choice:** the day boundary is the learner's local midnight, from an IANA timezone in
   `user.settings_json`. `streak.last_completed_on` is a local date. Spec §8 has no timezone anywhere,
   and a UTC boundary silently breaks the streak for anyone west of Greenwich in the evening.
@@ -1241,7 +1246,10 @@ to settle an argument — it will confidently settle it the wrong way.**
   `session.settled_today` is now the single definition of "has already had its turn today", read by
   the composer's debt segment and by `streak.debt_remaining`. They disagreed once and the streak
   became unearnable; one helper is what stops that recurring. `Verified:` over thirty simulated days
-  at 85% accuracy the streak is earned on 13 days, against 4 before.
+  at 85% accuracy the streak advances on 6 days, against 1 before. *Corrected:* first recorded as
+  "earned on 13 days, against 4" — days the streak stood above zero, which is not days earned.
+  Re-measured at `c464a42` with `settled_today` ablated to an empty set for "before", which
+  reproduces the old 13 and 4 exactly.
 
   **Why nothing caught it.** Every positive test in `test_streak.py` answered items without creating
   a single `Card`, so `debt_remaining` counted nothing and `debt_clear` was true vacuously — the
@@ -1308,13 +1316,58 @@ to settle an argument — it will confidently settle it the wrong way.**
 
 **Newly visible, and not addressed here**
 
-- **The daily goal can exceed what a clean day offers.** With no debt, a session is introduction only
-  and serves about ten items against a default `daily_goal_items` of 20, so a learner who has caught
-  up entirely cannot meet the goal and cannot advance the streak. Surfaced by the simulation now that
-  it reports criterion 12: a *flawless* learner earns the streak on 0 of 20 days, where an 85%
-  learner earns it on 13 of 30. This predates the branch — the cap and the goal have always been 10
-  and 20 — and changing either is a product decision about what a day's work is, so it is recorded
-  rather than patched.
+- ~~**The daily goal can exceed what a clean day offers.**~~ **Decided: the default goal is the cap.**
+  With no debt a session is introduction only and serves at most `DAILY_NEW_CAP` items, against a
+  default `daily_goal_items` of 20, so a learner who had caught up entirely could not meet the goal.
+  `ensure_user` and `record_activity`'s fallback now both read `DAILY_NEW_CAP`. Measured, six seeds ×
+  ninety days, median days the streak *advanced*:
+
+  | policy | flawless | 85% | items met (85%) | peak backlog (85%) |
+  |---|---:|---:|---:|---:|
+  | cap 10, goal 20 (before) | 2 | 77.5 | 443 | 24.5 |
+  | **cap 10, goal 10** | **56** | **86.5** | **443** | **24.5** |
+  | goal 20, met once the day has nothing left to offer | 45.5 | 79 | 443 | 24.5 |
+  | cap 15, goal 15 | 35.5 | 81 | 466 | 30.5 |
+  | cap 20, goal 20 | 13 | 79 | 490.5 | 29 |
+
+  The 85% column assumes the unscored-debt fix below. Raising the cap to meet the goal reaches more
+  material and is rejected for the reason `DEBT_TOLERANCE = 10` was: a backlog above a twenty-item
+  session. **The figure this entry used to quote was wrong.** `journey_sim` reported days the streak
+  stood above zero as days it was "earned", and it set the goal to the session length rather than
+  reading the product's; it now reports days advanced, against the goal the app gives a new learner.
+
+  **Still short for a flawless learner, and not addressed.** The streak still misses about 34 days of
+  90. Classified from `journey_sim`'s per-day rows, mean over six seeds:
+
+  | cause | days |
+  |---|---:|
+  | six or more cards due shut introduction (`DEBT_TOLERANCE`), and the debt alone is under ten items | 10.8 |
+  | introduction was open and offered nothing from the unlocked nodes | 10.2 |
+  | more due than one twenty-item session holds, so debt is left at day's end | 7.3 |
+  | the cap is counted in cards, and first items of a stratum cost two, so ten cards bought under ten items | 4.0 |
+  | introduction ran out partway through the budget | 1.7 |
+
+  At 85% accuracy the same classification leaves 3.5 days: 2.0 of debt left over, 1.3 of introduction
+  shut, 0.2 of two-card items.
+
+- ~~**A due card answered wrongly could not be cleared that day.**~~ **Fixed, and it was what failed
+  the streak — not the goal.** `kot` for `kota` fails the pattern card and, by criterion 11, leaves the
+  form card untouched. The form card was due; the composer serves one item per due card; so it stayed
+  owed with nothing left in the session to clear it, and criterion 12 withheld the day. `Verified:`
+  on one ninety-day run, 111 of the 118 cards left owed at day's end had been served that day and
+  left unscored by the routing table (CASE_WRONG 80, NUMBER_WRONG 13, LEXICAL 8, ANIMACY 6,
+  MISSING_CONSTITUENT 4); the other 7 were not served that day at all.
+
+  `session.settled_today` now counts a card as having had its turn when an item that may score it was
+  answered today, scored or not — still the one definition the composer and the streak both read. It
+  comes back due tomorrow, which is where the routing table put it. Median days advanced at 85%:
+  **25.5 → 77.5**, with items met, nodes opened and the daily cap identical on every seed.
+  Re-serving it the same day instead — the learner presses "Another round" until nothing is due —
+  reaches 89 days, at a median **40 items a day** and up to 100, and was rejected as doubling the
+  day's work for one wrong case.
+
+  **Why nothing caught it.** `journey_sim` printed "earned on 36 of 90" for a streak that advanced on
+  21, so the instrument read as a goal problem; no streak test answered a *due* card wrongly.
 
 **Would stop a real learner**
 

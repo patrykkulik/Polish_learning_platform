@@ -71,6 +71,14 @@ MASTERY_MIN_SPAN_DAYS = 7
 
 #: New cards introduced per day. Without a cap, one enthusiastic evening creates
 #: a debt spike three days later that reads as punishment for engagement.
+#:
+#: Also the default daily goal, in items. With nothing due a session is
+#: introduction only, and since every introduced item costs at least one card, a
+#: clean day offers at most this many items — fewer when the first item of a
+#: stratum costs two. The goal stood at twenty, which a learner who had caught up
+#: entirely could never meet: a flawless learner advanced the streak on 2 days of
+#: 90. At ten, 56. Raising the cap to match a goal of twenty was measured and
+#: rejected: 13 days, and a backlog of 29 to 38 against a twenty-item session.
 DAILY_NEW_CAP = 10
 
 #: Criterion 9's bound: how much debt may remain and still admit new material.
@@ -332,12 +340,42 @@ def settled_today(db: Session, user_id: int, settings: dict) -> set[int]:
     that rewards them for emptying it. They disagreed once and the streak became
     unearnable; a single helper is what stops that recurring.
 
+    A card has had its turn when an item that may score it was answered today —
+    **whether or not the answer scored it.** `kot` for `kota` fails the rule and,
+    by criterion 11, leaves the form card alone; the form card was due, and the
+    composer serves one item per due card, so reading only what *advanced* left
+    it owed with nothing left in the session to clear it. One wrong case cost the
+    day's streak: over ninety simulated days at 85% accuracy the streak failed on
+    debt about 55 days in 90, and advanced on a median 25.5. Counting the turn
+    instead, it advances on 77.5, with the same items met and nodes opened. The
+    card is due again tomorrow, which is where the routing table put it.
+
     Empty when `ONE_REVIEW_PER_DAY` is off, because then answering a card again
     does move it and it is genuinely still due.
     """
     if not schedule.ONE_REVIEW_PER_DAY:
         return set()
-    return schedule.cards_advanced_since(db, user_id, start_of_user_day(settings))
+    since = start_of_user_day(settings)
+    settled = schedule.cards_advanced_since(db, user_id, since)
+    answered = db.scalars(
+        select(Item).where(
+            Item.id.in_(
+                select(Attempt.item_id).where(
+                    Attempt.user_id == user_id, Attempt.created_at >= since
+                )
+            )
+        )
+    ).all()
+    if not answered:
+        return settled
+    sense_by_form = _sense_by_form(db)
+    turned: set[tuple[str, int]] = set()
+    for item in answered:
+        turned |= _item_referents(db.get(Node, item.node_id), item, sense_by_form)
+    for card in db.scalars(select(Card).where(Card.user_id == user_id)):
+        if (card.population, card.sense_id or card.form_id or card.pattern_id) in turned:
+            settled.add(card.id)
+    return settled
 
 
 def known_lexemes(db: Session, user_id: int) -> set[int]:
