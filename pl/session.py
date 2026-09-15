@@ -588,6 +588,7 @@ def build_session(
     """
     horizon = end_of_user_day(settings)
     debt_items: list[Item] = []
+    debt_introduced = 0
     remedial: list[Item] = []
     new_items: list[Item] = []
     seen: set[int] = set()
@@ -601,6 +602,14 @@ def build_session(
         seen.add(item.id)
         bucket.append(item)
         return True
+
+    # The day's new-card budget, and what the learner already holds. Computed for
+    # the whole composition rather than inside the introduction segment, because
+    # every segment can create cards and the cap is named for the day, not for
+    # one segment of it.
+    budget = _introduction_budget(db, user_id, settings)
+    started = _started_referents(db, user_id)
+    sense_by_form = _sense_by_form(db)
 
     # 1 — debt. A card whose schedule has already advanced today is not debt: it
     # has had its turn, and under `ONE_REVIEW_PER_DAY` answering it again cannot
@@ -621,10 +630,27 @@ def build_session(
     ]
     known = known_lexemes(db, user_id)
     for card in due:
-        for item in _items_for_card(db, card, known):
-            if not offerable(item):
-                continue
+        candidates = [i for i in _items_for_card(db, card, known) if offerable(i)]
+        # A due card must be served, but which of its items serves it is free —
+        # and a form card is shared by several. Preferring one that introduces
+        # nothing keeps the debt queue from dragging an unmet referent along and
+        # creating a card the daily cap never authorised. This is the residue
+        # that remained after remediation stopped introducing: the cap read 11 or
+        # 12 against a limit of 10, every one of them arriving through debt.
+        candidates.sort(
+            key=lambda i: bool(
+                _item_referents(db.get(Node, i.node_id), i, sense_by_form) - started
+            )
+        )
+        for item in candidates:
             if add(debt_items, item):
+                # Charged if it introduced after all, so the budget the other
+                # segments read is the truth about the day.
+                introduced_by_debt = _item_referents(
+                    db.get(Node, item.node_id), item, sense_by_form
+                ) - started
+                started |= introduced_by_debt
+                debt_introduced += len(introduced_by_debt)
                 break
     debt_total = len(due)
     debt_served = len(debt_items)
@@ -632,10 +658,8 @@ def build_session(
     # 2 — new, while the backlog is small enough to bear it. Claims its room
     # before remediation is allowed to ask for any.
     introduced = 0
+    budget = max(0, budget - debt_introduced)
     if len(due) <= DEBT_TOLERANCE:
-        budget = _introduction_budget(db, user_id, settings)
-        started = _started_referents(db, user_id)
-        sense_by_form = _sense_by_form(db)
         # Round-robin across nodes rather than draining them in turn. Node order
         # is arbitrary, and taking one node at a time means the first unlocked
         # node swallows the whole daily cap — a learner would spend day one on
@@ -682,6 +706,15 @@ def build_session(
                     cost = len(refs - started) or 1
                     if cost > budget - introduced:
                         continue
+                    if item.id in seen:
+                        # Already claimed by the debt segment this session. Not a
+                        # reason to give up on this pool: `add` reports "full" and
+                        # "already taken" with the same False, and treating the
+                        # second as the first ends introduction for the day with
+                        # budget and room still unspent — handing the room to
+                        # remediation instead. The remediation segment carries a
+                        # comment about this exact trap; this loop fell into it.
+                        continue
                     if add(new_items, item):
                         started |= refs
                         introduced += cost
@@ -707,6 +740,18 @@ def build_session(
                 # overlap with the debt queue, which is the common case.
                 if total() >= limit:
                     break
+                # Remediation re-drills what the learner got wrong. It does not
+                # introduce, and an item from the weakest node whose referents
+                # they have never met is not remediation wearing a different hat
+                # — it is new material arriving through a segment that answers to
+                # no budget and no gate. That is how a cap named for ten cards a
+                # day passed seventeen, and how new referents reached the learner
+                # on days criterion 9's bound had shut introduction entirely.
+                #
+                # Charging it to the daily budget instead was tried and is not
+                # enough: it still admits new material when the gate is shut.
+                if _item_referents(weak, item, sense_by_form) - started:
+                    continue
                 add(remedial, item)
 
     return debt_items + remedial + new_items, {

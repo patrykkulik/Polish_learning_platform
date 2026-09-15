@@ -9,25 +9,6 @@
 
 const main = document.getElementById("main");
 
-async function request(url) {
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (e) {
-    throw new Error("The server could not be reached.");
-  }
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = (await res.json()).detail || "";
-    } catch (e) {
-      /* An error page that is not JSON. The status is the whole message. */
-    }
-    throw new Error(detail || `The server returned ${res.status}.`);
-  }
-  return res.json();
-}
-
 function fail(message) {
   main.innerHTML = `
     <div class="empty">
@@ -220,13 +201,5 @@ function renderNodes(nodes) {
     </section>`;
 }
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
-}
-function escapeAttr(s) {
-  return escapeHtml(s);
-}
 
 load();

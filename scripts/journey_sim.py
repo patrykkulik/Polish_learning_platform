@@ -86,10 +86,6 @@ class FakeDatetime(_dt.datetime):
         return CLOCK.astimezone(tz) if tz is not None else CLOCK.replace(tzinfo=None)
 
 
-_session.datetime = FakeDatetime
-_schedule.datetime = FakeDatetime
-
-
 def wrong_answer(db, item: Item, rng: random.Random) -> str:
     """A *real* wrong answer: another cell of the same paradigm where one exists.
 
@@ -123,6 +119,17 @@ def simulate(
     per-day rows cannot answer, such as *which* mastery condition is holding a
     node shut.
     """
+    # Patched here rather than at import, and restored afterwards. As a module
+    # side effect this rewrote `datetime` inside two production modules for
+    # anything that imported the harness — and the symptom, mastery spans and
+    # FSRS intervals that never elapse, looks like a product bug rather than a
+    # harness one. The design's own lesson about instruments that shift some
+    # clocks and not others applies equally to one that shifts clocks for code
+    # it is not measuring.
+    restore = (_session.datetime, _schedule.datetime, random.getstate())
+    _session.datetime = FakeDatetime
+    _schedule.datetime = FakeDatetime
+
     engine = create_engine("sqlite://", future=True)
     models.Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine, expire_on_commit=False, future=True)()
@@ -220,6 +227,9 @@ def simulate(
     if inspect is not None:
         inspect(db, user)
     db.close()
+    engine.dispose()
+    _session.datetime, _schedule.datetime, state = restore
+    random.setstate(state)
     return rows, totals
 
 

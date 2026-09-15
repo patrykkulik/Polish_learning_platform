@@ -243,6 +243,26 @@ def cards_advanced_since(db: Session, user_id: int, since: datetime) -> set[int]
     )
 
 
+def card_advanced_since(db: Session, card: Card, since: datetime) -> bool:
+    """Has *this* card's schedule already moved since `since`?
+
+    One existence check per card, not the whole set. `apply_diagnosis` runs once
+    per answered item, so building the set here made a session quadratic against
+    a review table that only grows — a forty-day test went from seconds to
+    minutes. `cards_advanced_since` is still the right shape for the composer,
+    which asks once per session.
+    """
+    return (
+        db.scalar(
+            select(Review.id)
+            .join(Attempt, Attempt.id == Review.attempt_id)
+            .where(Review.card_id == card.id, Attempt.created_at >= since)
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def apply_diagnosis(
     db: Session,
     user_id: int,
@@ -260,16 +280,13 @@ def apply_diagnosis(
     """
     cards = cards_for_item(db, user_id, item)
     ratings = ratings_for(item, diagnosis.error_class)
-    settled = (
-        cards_advanced_since(db, user_id, day_start) if ONE_REVIEW_PER_DAY else set()
-    )
     applied: dict[str, Rating] = {}
 
     for population, card in cards.items():
         rating = ratings.get(population)
         if rating is None:
             continue  # unscored: this card's schedule is deliberately untouched
-        if card.id in settled:
+        if ONE_REVIEW_PER_DAY and card_advanced_since(db, card, day_start):
             continue
         apply_rating(db, card, rating, attempt_id)
         applied[population] = rating

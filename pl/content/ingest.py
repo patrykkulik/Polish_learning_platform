@@ -463,6 +463,21 @@ def main() -> None:
             print(f"\n  could not check for stale items: {exc}")
             stale = []
         if stale:
+            from pl.models import Attempt
+
+            answered = {
+                item_id
+                for (item_id,) in session.execute(
+                    select(Attempt.item_id).distinct()
+                ).all()
+            }
+            # The distinction the operator actually needs. An item nobody has
+            # answered carries no history at all, so dropping it costs nothing;
+            # one with attempts behind it is the learner's record, and a content
+            # edit is not a reason to rewrite that.
+            untouched = [i for i in stale if i.id not in answered]
+            historic = [i for i in stale if i.id in answered]
+
             print(
                 f"\n  {len(stale)} items are still stored but are no longer produced"
                 f" by the current frames and lexemes."
@@ -472,10 +487,14 @@ def main() -> None:
             if len(stale) > 5:
                 print(f"    ... and {len(stale) - 5} more")
             print(
-                "  Nothing was deleted: these may carry attempts and error events,\n"
-                "  and a content edit is not a reason to rewrite the learner's history.\n"
-                "  They will still be served. Delete the database and rebuild to drop\n"
-                "  them, or keep them deliberately."
+                f"    {len(untouched)} never answered, {len(historic)} with attempts"
+                f" behind them."
+            )
+            print(
+                "  Nothing was deleted. The ones never answered carry no history and\n"
+                "  are safe to drop; the ones with attempts are the learner's record.\n"
+                "  All of them will still be served. Delete the database and rebuild to\n"
+                "  clear them, or keep them deliberately."
             )
     finally:
         session.close()

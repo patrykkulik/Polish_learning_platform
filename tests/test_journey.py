@@ -25,7 +25,19 @@ from pl.content import frames, ingest
 from pl.grade import classify
 from pl.models import Attempt, Card, Form, Item, Node, Pattern
 from pl.schedule import apply_diagnosis
-from pl.session import build_session, evaluate_unlocks, start_of_user_day
+# The instrument's learner-error model, not a second copy of it: these tests
+# pin the floors `journey_sim` establishes, which only holds while both model
+# the same learner.
+from scripts.journey_sim import wrong_answer as _wrong_form
+from pl.session import (
+    _item_referents,
+    _sense_by_form,
+    _started_referents,
+    build_session,
+    evaluate_unlocks,
+    start_of_user_day,
+    weakest_node,
+)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -184,22 +196,67 @@ def test_answered_items_are_not_offered_again_as_new(db, user):
     assert not repeated, f"{len(repeated)} answered items were re-offered as new"
 
 
-def test_remediation_fills_a_session_that_debt_leaves_short(db, user):
-    """The weakest node should top up a session that debt alone does not fill.
+def test_remediation_does_not_stop_at_its_first_overlap_with_debt(db, user):
+    """`add` reports "the session is full" and "already picked" with one False.
 
-    Debt claims one item per due card, so the items it picks and the items
-    remediation wants overlap heavily. If the remediation loop cannot tell "this
-    session is full" from "I have already seen this one", it stops on the first
-    overlap and the middle segment of the composition contributes nothing at all.
+    Debt and remediation draw from the same node, so their candidates overlap
+    heavily — and because the debt queue is served first, remediation's *first*
+    candidate is usually one debt has already taken. Treating that as a reason to
+    stop ends the segment before it contributes anything.
+
+    The overlap is constructed rather than hoped for. An earlier version of this
+    test ran on day one, where every item the learner had met was also in the
+    debt queue, so the only way remediation could add anything was by
+    introducing new material — which is segment 2's job, bounded by a cap and a
+    gate that segment 3 answers to neither of. That test passed for the wrong
+    reason and went on passing when the stop-on-overlap defect was reintroduced.
     """
-    first, _ = build_session(db, user.id, SETTINGS, limit=6)
-    for item in first:
-        answer(db, user, item, submitted="zzzzzz")  # wrong, so a node gets weak
+    from pl.schedule import cards_for_item
+
+    for _ in range(3):
+        picked, _ = build_session(db, user.id, SETTINGS, limit=10)
+        for item in picked:
+            answer(db, user, item)
+        advance_one_day(db)
+
+    wrong, _ = build_session(db, user.id, SETTINGS, limit=6)
+    for item in wrong:
+        answer(db, user, item, submitted="zzzzzz")
+    weak = weakest_node(db, user.id)
+    assert weak is not None, "no node became weakest, so remediation never runs"
+
+    # Everything the learner has met under the weak node, in the order
+    # remediation will walk it.
+    started = _started_referents(db, user.id)
+    sense_by_form = _sense_by_form(db)
+    met = [
+        item
+        for item in db.scalars(
+            select(Item).where(Item.node_id == weak.id).order_by(Item.id)
+        )
+        if not (_item_referents(weak, item, sense_by_form) - started)
+    ]
+    assert len(met) > 4, f"only {len(met)} met items under {weak.key}; too few to prove anything"
+
+    # Only the first two are due, so debt takes exactly remediation's opening
+    # candidates and everything after them is reachable only by continuing.
+    later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30)
+    for card in db.scalars(select(Card).where(Card.user_id == user.id)):
+        card.due_at = later
+    now = datetime.now(UTC).replace(tzinfo=None)
+    for item in met[:2]:
+        for card in cards_for_item(db, user.id, item).values():
+            card.due_at = now - timedelta(hours=1)
+    for attempt in db.scalars(select(Attempt).where(Attempt.user_id == user.id)):
+        attempt.created_at -= timedelta(days=1)
+    db.commit()
 
     picked, stats = build_session(db, user.id, SETTINGS, limit=20)
-    assert stats["debt_served"] > 0, "expected the wrong answers to create debt"
-    assert len(picked) > stats["debt_served"], (
-        "remediation added nothing beyond the debt queue"
+    remediated = len(picked) - stats["debt_served"] - stats["introduced_items"]
+    assert stats["debt_served"] > 0, "the constructed backlog was not served"
+    assert remediated > 0, (
+        "remediation contributed nothing: it stopped at the first candidate the "
+        "debt queue had already taken, which is its usual first candidate"
     )
 
 
@@ -824,29 +881,6 @@ def test_every_exercise_type_built_is_a_type_the_learner_can_meet(db, user, monk
 # exist to catch the class of regression, not to pin a number that will move.
 
 
-def _wrong_form(db, item, rng):
-    """Another cell of the same paradigm — a mistake, not gibberish.
-
-    Nonsense classifies as `UNANALYSABLE` and routes to different cards than the
-    errors learners actually make, so the debt it produces would not resemble a
-    learner's debt. Debt is what criterion 9 blocks new material on, which makes
-    this the difference between simulating a learner and simulating a cat.
-    """
-    if item.target_form_id is not None:
-        form = db.get(Form, item.target_form_id)
-        if form is not None:
-            others = [
-                f.surface
-                for f in db.scalars(
-                    select(Form).where(Form.lexeme_id == form.lexeme_id)
-                )
-                if f.surface != form.surface
-            ]
-            if others:
-                return rng.choice(others)
-    return "xxx"
-
-
 def _clear_debt(db):
     """Nothing due any more, but still the same day.
 
@@ -1354,3 +1388,144 @@ def test_a_place_takes_the_preposition_its_own_word_governs(db):
     assert "Jestem na wsi." in built
     assert "Jestem w szkole." in built, "the override leaked onto a noun that takes w"
     assert not [s for s in built if s.startswith("Jestem w uniwersytecie")]
+
+
+def test_remediation_never_introduces_what_the_learner_has_not_met(db, user):
+    """Criterion 15, at the segment that used to have no budget at all.
+
+    `DAILY_NEW_CAP` is named for cards and the budget is read from
+    `card.created_at`, but only the introduction segment ever consulted it —
+    while *every* segment creates cards, because answering an item creates the
+    cards it scores. Remediation drew from the weakest node regardless of what
+    the learner had met, so it introduced material through a segment that
+    answers to neither the cap nor criterion 9's gate. Measured over ninety
+    simulated days: up to **17** cards in a day against a cap of 10, exceeded on
+    10 of 540 learner-days.
+
+    The weakest node is made a *grammar* node on purpose. Left to itself the
+    weakest node is V01, whose items the learner has met in full — so remediation
+    has nothing new to offer and the defect cannot appear, which is why a
+    naturalistic run reproduces it only by luck.
+    """
+    from datetime import datetime as dt
+
+    from pl.models import NodeUnlock
+
+    for node in db.scalars(select(Node)):
+        db.add(
+            NodeUnlock(
+                user_id=user.id,
+                node_id=node.id,
+                unlocked_at=dt.now(UTC).replace(tzinfo=None),
+            )
+        )
+    db.commit()
+
+    # Meet part of one grammar node, getting most of it wrong so it becomes the
+    # weakest by error rate while most of its items remain unmet.
+    grammar = db.scalar(select(Node).where(Node.key == "N01"))
+    items = list(db.scalars(select(Item).where(Item.node_id == grammar.id).limit(8)))
+    assert len(items) == 8, "N01 is too small for this test"
+    for index, item in enumerate(items):
+        answer(db, user, item, submitted=None if index == 0 else "zzzzzz")
+    advance_one_day(db)
+
+    weak = weakest_node(db, user.id)
+    assert weak is not None and weak.key == grammar.key, (
+        f"expected {grammar.key} to be weakest, got {weak.key if weak else None}"
+    )
+    unmet = [
+        item
+        for item in db.scalars(select(Item).where(Item.node_id == weak.id))
+        if _item_referents(weak, item, _sense_by_form(db)) - _started_referents(db, user.id)
+    ]
+    assert unmet, "every item of the weakest node is already met; nothing to prove"
+
+    started = _started_referents(db, user.id)
+    sense_by_form = _sense_by_form(db)
+    picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+
+    remediated = picked[stats["debt_served"] : len(picked) - stats["introduced_items"]]
+    smuggled = [
+        item.expected_answer
+        for item in remediated
+        if _item_referents(db.get(Node, item.node_id), item, sense_by_form) - started
+    ]
+    assert not smuggled, (
+        f"remediation introduced {len(smuggled)} unmet referents past the daily "
+        f"cap and criterion 9's gate: {smuggled[:5]}"
+    )
+    # Remediation contributing *nothing* here is the correct outcome, not a
+    # vacuous test: every item of the weakest node the learner has met is already
+    # in the debt queue, so there is nothing left to re-drill. The scenario is
+    # live because unmet items exist and the session left room for them — the
+    # only reason they did not arrive is the restriction under test.
+    assert len(picked) < 20, (
+        "the session filled up, so remediation was never put to the choice"
+    )
+
+
+def test_the_debt_queue_prefers_an_item_that_introduces_nothing(db, user):
+    """A due card must be served; which of its items serves it is free.
+
+    A form card is shared by every exercise built on that form — 93 of 257 forms
+    here have items under more than one rule — and the draw is ordered
+    least-practised-first, which prefers exactly the items the learner has never
+    met. Those are the ones carrying an unmet second referent, so serving one
+    creates a card the daily cap never authorised, through the one segment that
+    cannot have a budget because debt must be served.
+
+    This was the residue left after remediation stopped introducing: the day's
+    count still read 11 or 12 against a limit of 10, all of it arriving through
+    debt. Preferring a candidate that introduces nothing took it to exactly 10,
+    with zero days over the cap across 540 measured learner-days.
+    """
+    from collections import defaultdict
+
+    from pl.schedule import MORPH, PATTERN, card_for
+
+    spans = defaultdict(set)
+    for item in db.scalars(select(Item)):
+        if item.target_form_id and item.pattern_id:
+            spans[item.target_form_id].add(item.pattern_id)
+    form_id = next(f for f, patterns in spans.items() if len(patterns) > 1)
+    candidates = list(
+        db.scalars(
+            select(Item)
+            .where(Item.target_form_id == form_id, Item.pattern_id.isnot(None))
+            .order_by(Item.id)
+        )
+    )
+    met, unmet = candidates[0], next(
+        i for i in candidates if i.pattern_id != candidates[0].pattern_id
+    )
+
+    # The learner has met one of them, and so holds its form card and its rule
+    # card. The other's rule is still unmet.
+    answer(db, user, met)
+    started = _started_referents(db, user.id)
+    assert (PATTERN, unmet.pattern_id) not in started, "both rules are already met"
+
+    # Only that form card is due, and its turn today is over, so it is real debt.
+    later = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30)
+    for card in db.scalars(select(Card).where(Card.user_id == user.id)):
+        card.due_at = later
+    card_for(db, user.id, MORPH, form_id).due_at = datetime.now(UTC).replace(
+        tzinfo=None
+    ) - timedelta(hours=1)
+    for attempt in db.scalars(select(Attempt).where(Attempt.user_id == user.id)):
+        attempt.created_at -= timedelta(days=1)
+    db.commit()
+
+    sense_by_form = _sense_by_form(db)
+    started = _started_referents(db, user.id)
+    picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+    assert stats["debt_served"] == 1, f"expected one debt item, got {stats['debt_served']}"
+
+    served = picked[0]
+    introduced = _item_referents(db.get(Node, served.node_id), served, sense_by_form) - started
+    assert not introduced, (
+        f"the debt queue served {served.expected_answer!r} ({served.prompt!r}), "
+        f"which drags in {sorted(introduced)} — when an item for the same due "
+        f"card introduced nothing at all"
+    )

@@ -134,6 +134,17 @@ learner practised most were the least able to master. `ONE_REVIEW_PER_DAY`
 advances a card at most once daily; later encounters still record their attempt
 and error events, so remediation still sees everything that went wrong.
 
+**The daily cap was named for the day and enforced on one segment of it.**
+Every segment creates cards — answering an item creates the cards it scores —
+but only introduction consulted `DAILY_NEW_CAP`. Remediation drew from the
+weakest node regardless of what the learner had met, and the debt queue, ordered
+least-practised-first, preferred exactly the items that introduce. Across six
+seeds × ninety days, cards created in one day fell from a maximum of **17
+against a cap of 10** to exactly **10**, and days over the cap from 10 of 540 to
+**zero** — while node progression improved. Distinct items met fell from a
+median 606 to 461, which is not a regression: the higher figure was reached by
+exceeding the cap.
+
 **And it made the streak unearnable, which review caught and no test did.**
 Suppressing a card's schedule advance left `due_at` in the past, and FSRS puts a
 new card's first steps minutes apart — so on any day the learner met new

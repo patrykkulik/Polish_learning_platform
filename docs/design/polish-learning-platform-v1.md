@@ -1265,6 +1265,47 @@ to settle an argument — it will confidently settle it the wrong way.**
   NOT NULL one, which is a real migration and should stop the operator rather than be guessed at.
   Alembic stays deferred; it is only defensible while adding a column still reaches the learner.
 
+- ~~The daily new-card cap was named for the day and enforced on one segment of it.~~ **Fixed, and
+  the measurement is the point.** `DAILY_NEW_CAP` is counted in cards and read from
+  `card.created_at`, but only the introduction segment consulted it — while *every* segment creates
+  cards, because answering an item creates the cards it scores. Two leaks, found in that order:
+
+  - **Remediation drew from the weakest node regardless of what the learner had met**, so it
+    introduced material through a segment answering to neither the cap nor criterion 9's gate.
+    Charging it to the same budget was tried first and is not enough: it still admits new material on
+    days the gate is shut. Remediation now re-drills only what the learner has met — an item of the
+    weakest node whose referents they have never seen is not remediation wearing a different hat.
+  - **The debt queue preferred the items that introduce.** A form card is shared by every exercise
+    built on that form — 93 of 257 forms here have items under more than one rule — and the draw is
+    ordered least-practised-first, which prefers exactly what the learner has never met. A due card
+    must be served, but *which* of its items serves it is free, so a candidate that introduces
+    nothing wins where one exists.
+
+  `Verified:` across six seeds × ninety days, cards created in a single day fell from a maximum of
+  **17 against a cap of 10** to exactly **10**, and days over the cap from 10 of 540 to **zero**.
+  Node progression improved rather than suffered — 8,9,8,8,8,8 against 8,8,8,8,8,8. Distinct items
+  met fell from a median 606 to 461, and that is not a regression: the higher figure was reached *by
+  exceeding the cap*, which is the debt spike criterion 15 exists to prevent.
+
+- ~~Introduction treated "the debt segment already took this item" as "this pool is spent".~~ `add`
+  reports "the session is full" and "already picked" with one `False`, and the introduction loop read
+  both as exhaustion — ending the day with budget and room unspent, and handing the room to
+  remediation. The remediation segment carries a comment about this exact trap; the loop above it
+  fell into it.
+
+- ~~`apply_diagnosis` fetched the whole set of already-advanced cards per answered item.~~ The fix for
+  the streak defect above built that set once per *item*, where the question is about one card, so
+  the work grew with a review table that only ever grows. Reverted to the existence check it had been
+  — the composer still asks for the whole set once per session, which is the right shape there.
+
+  **No performance claim is attached to this, because the measurements that prompted it were wrong.**
+  The wall-clock times that looked like a collapse (a test file apparently going from 37 seconds to
+  over 500) were dominated by per-invocation overhead outside pytest in this environment: the same
+  run reports 33 seconds of test time against 933 seconds of wall time. `pytest`'s own figure for the
+  whole suite is unchanged at ~114 seconds. The revert stands on being the cheaper query for the
+  question asked, not on a measured regression — and the episode is worth recording because a wall
+  clock is not an instrument, which is the same lesson `journey_sim` already carries.
+
 **Newly visible, and not addressed here**
 
 - **The daily goal can exceed what a clean day offers.** With no debt, a session is introduction only

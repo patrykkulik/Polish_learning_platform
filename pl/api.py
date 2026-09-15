@@ -387,6 +387,29 @@ def progress_page(request: Request):
     return templates.TemplateResponse(request, "progress.html", {})
 
 
+def _mastered_for_display(db, user_id: int, node, detail: dict) -> bool:
+    """`is_mastered`, but a progress page must not 500 on an undefined gate.
+
+    `is_mastered` raises for a node with no gating referents, deliberately: an
+    unlock condition nobody can evaluate is a bug worth stopping for. The guard
+    here reads `strata > 0`, which holds for a leaf node — but a *function* node
+    has no strata of its own and recurses into its prerequisites, so the guard
+    passes while the recursion raises on whichever prerequisite is empty. The
+    whole page then 500s instead of one row reading "not yet".
+
+    Zero-stratum nodes became newly reachable when theme gating arrived: gating
+    removes a stratum rather than emptying it, so a rule can narrow to nothing
+    while the build still reports success.
+    """
+    if detail["strata"] <= 0 and node.type != "function":
+        return False
+    try:
+        return composer.is_mastered(db, user_id, node)
+    except AssertionError:
+        # A prerequisite has no gating referents. Undefined is not mastered.
+        return False
+
+
 @app.get("/api/graph")
 def graph():
     """The skill graph with per-node mastery, for the progress view.
@@ -409,8 +432,7 @@ def graph():
                     "title": node.title,
                     "type": node.type,
                     "unlocked": composer.is_unlocked(db, user.id, node),
-                    "mastered": detail["strata"] > 0
-                    and composer.is_mastered(db, user.id, node),
+                    "mastered": _mastered_for_display(db, user.id, node, detail),
                     #: Decays with time. The progress bar.
                     "mastery": round(detail["retention"], 4),
                     "strata": detail["strata"],

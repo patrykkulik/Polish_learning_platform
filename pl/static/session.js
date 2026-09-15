@@ -26,32 +26,6 @@ function setProgress(p) {
   document.getElementById("s-retained").textContent = `${p.retained}/${p.tracked}`;
 }
 
-/* Every request goes through here, because none of them checked `res.ok`.
- *
- * A failure still parses as JSON — FastAPI returns `{"detail": ...}` — so the
- * caller read `data.items` or `data.error_class` off an error body, got
- * undefined, and threw somewhere further on. The learner saw a page that had
- * simply stopped: no message, and an answer that appeared to have been
- * swallowed rather than rejected. */
-async function request(url, options) {
-  let res;
-  try {
-    res = await fetch(url, options);
-  } catch (e) {
-    throw new Error("The server could not be reached.");
-  }
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = (await res.json()).detail || "";
-    } catch (e) {
-      /* An error page that is not JSON. The status is the whole message. */
-    }
-    throw new Error(detail || `The server returned ${res.status}.`);
-  }
-  return res.json();
-}
-
 /* Say so, and leave a way out. A dead page is the one thing this must not be. */
 function fail(message, retry) {
   stage.innerHTML = `
@@ -327,13 +301,5 @@ function renderMilestones(m) {
     </div>`;
 }
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-  );
-}
-function escapeAttr(s) {
-  return escapeHtml(s);
-}
 
 load();

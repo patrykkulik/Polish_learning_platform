@@ -87,6 +87,22 @@ def _frame_target(cells: list[Form], frame: dict) -> Form | None:
     return _cell(cells, frame["case"])
 
 
+def admits(frame: dict, lemma: str, themes: dict[str, set[str]]) -> bool:
+    """Whether `frame` may be built on `lemma`.
+
+    One predicate, called from both the stratum loop and the item loop. They must
+    agree exactly: `ensure_patterns` decides which strata exist and so sets the
+    unlock denominator, while `build_items` decides whether anything populates
+    them. Written out twice, a later edit to one produces a stratum no item can
+    satisfy — the node's denominator grows by one with no way to clear it, and
+    the node becomes permanently unmasterable with every row well-formed and
+    every test green. Theme gating is an authoring tool the design expects to be
+    used repeatedly as vocabulary grows, so these two will be edited again.
+    """
+    admitted = frame.get("themes")
+    return not admitted or bool(themes.get(lemma, set()).intersection(admitted))
+
+
 def ensure_patterns(db: Session) -> list[Pattern]:
     """Create exactly the strata that some frame can actually populate.
 
@@ -114,9 +130,8 @@ def ensure_patterns(db: Session) -> list[Pattern]:
         rule = frame.get("rule_key")
         if not rule or frame.get("vocabulary"):
             continue
-        admitted = frame.get("themes")
         for lexeme in db.scalars(select(Lexeme)):
-            if admitted and not themes.get(lexeme.lemma, set()).intersection(admitted):
+            if not admits(frame, lexeme.lemma, themes):
                 continue
             if _frame_target(_cells(db, lexeme), frame) is None:
                 continue
@@ -244,8 +259,7 @@ def build_items(db: Session) -> list[Item]:
             # A frame may only make sense for part of the lexeme set. "Jestem
             # sklepem" inflects correctly and means nothing, and a drill the
             # learner cannot read as a sentence is a worse drill.
-            admitted = frame.get("themes")
-            if admitted and not themes.get(lexeme.lemma, set()).intersection(admitted):
+            if not admits(frame, lexeme.lemma, themes):
                 continue
 
             if frame.get("vocabulary"):
