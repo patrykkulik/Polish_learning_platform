@@ -24,6 +24,9 @@ from pl import tags
 from pl.content.ingest import (
     lexeme_locatives,
     lexeme_themes,
+    lexeme_vocabulary_nodes,
+    mass_nouns,
+    relation_nouns,
     node_key_for,
     rule_nodes,
     rule_stratification,
@@ -31,7 +34,17 @@ from pl.content.ingest import (
 from pl.content.validate import validate
 from pl.domain import MULTI_SLOT
 from pl.grade.classify import normalise, tokenise
-from pl.models import Form, Item, ItemSlot, Lexeme, Node, Pattern, Sense
+from pl.models import (
+    Form,
+    Item,
+    ItemSlot,
+    Lexeme,
+    Node,
+    NodeLexeme,
+    NodePrereq,
+    Pattern,
+    Sense,
+)
 
 DATA = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -80,6 +93,43 @@ def _match(cells: list[Form], spec: dict) -> Form | None:
     return None
 
 
+#: English articles, by frame. `the` points at a particular thing, `a` at any
+#: one of a kind, and a mass noun takes neither: "I like the cat", "I like a
+#: girl", "I like coffee". Without the distinction the frames printed "I like
+#: cat" and "I have the brother" for every count noun in the course.
+#: `my` is the third, and it is not an article at all — it stands in for one for
+#: the words English will not take one on. See `relation_nouns`.
+ARTICLES = ("the", "a", "my")
+
+
+def english_noun(
+    frame: dict, gloss: str, is_mass: bool = False, is_relation: bool = False
+) -> str:
+    """The gloss with the article its frame and its noun call for."""
+    article = frame.get("article")
+    if article is None:
+        return gloss
+    if is_relation:
+        # A relation is *mine* wherever the frame points at a person — "I like my
+        # brother", "This is my brother's house" — and indefinite where English
+        # counts them instead: "I have a brother", "I do not have a brother".
+        article = frame.get("relation_article", "my")
+    if article == "my":
+        return f"my {gloss}"
+    if article not in ARTICLES:
+        raise AssertionError(
+            f"frame {frame['key']!r} asks for article {article!r}; "
+            f"the frames know {ARTICLES}"
+        )
+    if is_mass:
+        # "the coffee" is a particular coffee and reads correctly; "a coffee" is
+        # a cup of it, which is a different sentence from the Polish.
+        return f"the {gloss}" if article == "the" else gloss
+    if article == "the":
+        return f"the {gloss}"
+    return f"an {gloss}" if gloss[0].lower() in "aeiou" else f"a {gloss}"
+
+
 def _frame_target(cells: list[Form], frame: dict) -> Form | None:
     """The cell a frame asks for, however it asks."""
     if "cell" in frame:
@@ -87,7 +137,12 @@ def _frame_target(cells: list[Form], frame: dict) -> Form | None:
     return _cell(cells, frame["case"])
 
 
-def admits(frame: dict, lemma: str, themes: dict[str, set[str]]) -> bool:
+def admits(
+    frame: dict,
+    lemma: str,
+    themes: dict[str, set[str]],
+    locatives: dict[str, str] | None = None,
+) -> bool:
     """Whether `frame` may be built on `lemma`.
 
     One predicate, called from both the stratum loop and the item loop. They must
@@ -99,6 +154,17 @@ def admits(frame: dict, lemma: str, themes: dict[str, set[str]]) -> bool:
     every test green. Theme gating is an authoring tool the design expects to be
     used repeatedly as vocabulary grows, so these two will be edited again.
     """
+    if lemma in frame.get("exclude_lemmas", ()):
+        return False
+
+    # Direction is lexical in the same way place is: a noun that takes `na` for
+    # place takes `na` + accusative for direction — `Idę na targ`, not `Idę do
+    # targu`. One field decides both, so the frames that say "I am going to the
+    # ___" split on it rather than each naming its own list.
+    wanted = frame.get("place_preposition")
+    if wanted and (locatives or {}).get(lemma, "w") != wanted:
+        return False
+
     admitted = frame.get("themes")
     return not admitted or bool(themes.get(lemma, set()).intersection(admitted))
 
@@ -114,6 +180,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
     """
     rule_cases = rule_stratification()
     themes = lexeme_themes()
+    locatives = lexeme_locatives()
     node_of = rule_nodes()
     nodes = {n.key: n for n in db.scalars(select(Node))}
     existing = {
@@ -125,13 +192,15 @@ def ensure_patterns(db: Session) -> list[Pattern]:
     #: this from `existing` instead would make the comparison vacuous, since
     #: every stored row is in `existing` by construction.
     producible: set[tuple[str, str]] = set()
+    #: The lexemes that populate each stratum, for the reachability check.
+    populated: dict[tuple[str, str], set[str]] = {}
 
     for frame in _frames():
         rule = frame.get("rule_key")
         if not rule or frame.get("vocabulary"):
             continue
         for lexeme in db.scalars(select(Lexeme)):
-            if not admits(frame, lexeme.lemma, themes):
+            if not admits(frame, lexeme.lemma, themes, locatives):
                 continue
             if _frame_target(_cells(db, lexeme), frame) is None:
                 continue
@@ -144,6 +213,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
                 lexeme.lemma, rule_cases[rule], pos=lexeme.pos
             )
             producible.add((rule, stratum))
+            populated.setdefault((rule, stratum), set()).add(lexeme.lemma)
             if (rule, stratum) in existing:
                 continue
             pattern = Pattern(
@@ -176,6 +246,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
             lexeme.lemma, rule_cases[rule], pos=lexeme.pos
         )
         producible.add((rule, stratum))
+        populated.setdefault((rule, stratum), set()).add(lexeme.lemma)
         if (rule, stratum) in existing:
             continue
         pattern = Pattern(
@@ -187,6 +258,7 @@ def ensure_patterns(db: Session) -> list[Pattern]:
 
     db.flush()
     _assert_no_orphaned_strata(db, producible)
+    assert_every_stratum_is_reachable(db, populated)
     return created
 
 
@@ -242,10 +314,17 @@ def build_items(db: Session) -> list[Item]:
     rule_cases = rule_stratification()
     themes = lexeme_themes()
     locatives = lexeme_locatives()
+    mass = mass_nouns()
+    relations = relation_nouns()
     noms = _noun_nominatives(db)
+    vocabulary_nodes = lexeme_vocabulary_nodes()
 
+    #: Kept as rows rather than keys: an item's identity leaves out its node, so
+    #: a meaning item whose word has moved to another vocabulary node has to be
+    #: found and repointed. Skipping it as "already built" left the word gating
+    #: one node and answerable only under another.
     preexisting = {
-        (i.exercise_type, i.prompt, i.expected_answer)
+        (i.exercise_type, i.prompt, i.expected_answer): i
         for i in db.scalars(select(Item))
     }
     added: dict[tuple[str, str, str], str] = {}
@@ -254,16 +333,24 @@ def build_items(db: Session) -> list[Item]:
     for frame in _frames():
         for lexeme in lexemes:
             cells = _cells(db, lexeme)
-            gloss = glosses.get(lexeme.id, lexeme.lemma)
+            gloss = english_noun(
+                frame,
+                glosses.get(lexeme.id, lexeme.lemma),
+                lexeme.lemma in mass,
+                lexeme.lemma in relations,
+            )
 
             # A frame may only make sense for part of the lexeme set. "Jestem
             # sklepem" inflects correctly and means nothing, and a drill the
             # learner cannot read as a sentence is a worse drill.
-            if not admits(frame, lexeme.lemma, themes):
+            if not admits(frame, lexeme.lemma, themes, locatives):
                 continue
 
             if frame.get("vocabulary"):
-                item = _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng)
+                item = _meaning_item(
+                    frame, lexeme, cells, gloss, nodes[vocabulary_nodes[lexeme.lemma]],
+                    noms, rng,
+                )
             elif frame["exercise_type"] == "free_translation":
                 item = _free_item(
                     frame, lexeme, cells, gloss, patterns, rule_cases, locatives
@@ -292,6 +379,15 @@ def build_items(db: Session) -> list[Item]:
                     f"distinct template, case, or exercise type."
                 )
             if key in preexisting:
+                # Idempotency, but not blindness. An item is identified by its
+                # type, prompt and answer, so a re-authored *English* gloss or a
+                # word that changed vocabulary node would otherwise be built
+                # "already" and the learner would keep reading the old one.
+                stored = preexisting[key]
+                if frame.get("vocabulary") and stored.node_id != item.node_id:
+                    stored.node_id = item.node_id
+                if stored.gloss != item.gloss:
+                    stored.gloss = item.gloss
                 continue
 
             added[key] = frame["key"]
@@ -501,9 +597,9 @@ def _aspect_item(db, frame, lexeme, cells, gloss, patterns, rule_cases) -> Item 
     )
 
 
-def _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng) -> Item | None:
-    """Meaning recall, under the vocabulary node — the only M1 item scoring a
-    lexical card."""
+def _meaning_item(frame, lexeme, cells, gloss, node, noms, rng) -> Item | None:
+    """Meaning recall, under the word's own vocabulary node — the only M1 item
+    scoring a lexical card."""
     # Nouns only, for the answer as well as the distractors. A verb's paradigm
     # contains participles and a participle carries case, so a plain nominative
     # lookup builds "which word means to read? — czytająca" and calls it
@@ -520,7 +616,7 @@ def _meaning_item(frame, lexeme, cells, gloss, nodes, noms, rng) -> Item | None:
     rng.shuffle(options)
 
     return Item(
-        node_id=nodes["V01"].id,
+        node_id=node.id,
         pattern_id=None,
         exercise_type="mcq",
         prompt=frame["template"].format(gloss=gloss),
@@ -748,6 +844,73 @@ def build_sentence_items(db: Session) -> list[Item]:
     # later change to either path drops it silently.
     _assert_expected_answers_are_real_forms(db, created)
     return created
+
+
+def assert_every_stratum_is_reachable(
+    db: Session, populated: dict[tuple[str, str], set[str]]
+) -> None:
+    """Refuse a stratum no learner can ever reach.
+
+    Grammar introduces a noun only after its meaning item, and a vocabulary node
+    may open after grammar nodes that inflect its words. A stratum counts toward
+    its node's gate from the moment it exists — so a stratum whose every noun is
+    taught by a vocabulary node *downstream* of that grammar node is a deadlock:
+    its items wait for a meaning card, the meaning card waits for the vocabulary
+    node, and the vocabulary node waits for the grammar node to be mastered,
+    which waits for the stratum. `Verified:` nine masculine personal nouns in V02
+    gave N05 five such strata, and N05 was never mastered on any seed.
+
+    Every row involved is well-formed and nothing downstream raises, which is
+    why it is refused here rather than discovered by a learner who stops.
+    """
+    parents: dict[int, set[int]] = {}
+    for link in db.scalars(select(NodePrereq)):
+        parents.setdefault(link.node_id, set()).add(link.prereq_node_id)
+
+    def upstream(node_id: int) -> set[int]:
+        seen: set[int] = set()
+        stack = list(parents.get(node_id, ()))
+        while stack:
+            current = stack.pop()
+            if current not in seen:
+                seen.add(current)
+                stack.extend(parents.get(current, ()))
+        return seen
+
+    taught_by: dict[str, int] = {}
+    for lemma, node_id in db.execute(
+        select(Lexeme.lemma, NodeLexeme.node_id)
+        .join(NodeLexeme, NodeLexeme.lexeme_id == Lexeme.id)
+        .join(Node, Node.id == NodeLexeme.node_id)
+        .where(Node.type == "vocabulary")
+    ).all():
+        # One owner per word, or this check silently depends on row order — and
+        # the wrong owner is the difference between refusing a deadlock and
+        # shipping one.
+        if taught_by.setdefault(lemma, node_id) != node_id:
+            raise AssertionError(
+                f"{lemma!r} is taught by more than one vocabulary node; "
+                f"its membership was not reconciled"
+            )
+    patterns = {(p.rule_key, p.paradigm_class): p for p in db.scalars(select(Pattern))}
+    nodes = {n.id: n.key for n in db.scalars(select(Node))}
+
+    unreachable = sorted(
+        (nodes[patterns[key].node_id], *key, sorted(lemmas))
+        for key, lemmas in populated.items()
+        if all(
+            lemma in taught_by
+            and patterns[key].node_id in upstream(taught_by[lemma])
+            for lemma in lemmas
+        )
+    )
+    if unreachable:
+        raise AssertionError(
+            f"{len(unreachable)} stratum(s) are unreachable: every noun that "
+            f"populates them is taught by a vocabulary node that opens only after "
+            f"their own node is mastered — {unreachable}. Move a noun to a "
+            f"vocabulary node upstream of the stratum, or leave it out."
+        )
 
 
 def build(db: Session) -> list[Item]:

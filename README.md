@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 278 passing | — |
+| Test suite | 290 passing | — |
 
 Measured while proving it:
 
@@ -43,11 +43,12 @@ announced, and one announced twice teaches the learner the number is decorative.
 
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
-aspect taught from the first verb as pairs. 82 lexemes, 25 frames, 32 authored
-sentences, **983 items** across six exercise types — cloze (673),
-free translation (123), multiple choice (113, covering both form selection and
-meaning recall), preposition drill (30), listening dictation (26) and aspect
-choice (18) — all generated with no LLM and no human review. Multi-slot items
+aspect taught from the first verb as pairs. 192 lexemes, 25 frames, 32 authored
+sentences, **2,621 items** across six exercise types — cloze (1,821),
+free translation (342), multiple choice (325, covering both form selection and
+meaning recall), preposition drill (89), listening dictation (26) and aspect
+choice (18) — all generated with no LLM, and reviewed by the owner sentence by
+sentence for the first time at this revision. Multi-slot items
 bring the two error classes a single blank cannot produce: `WORD_ORDER` and
 `MISSING_CONSTITUENT`.
 
@@ -199,6 +200,34 @@ is the correct way to say the *wrong* preposition, and the right answer is
 `na wsi`. Expected surfaces come from SGJP and cannot be wrong; every word
 around them is authored, and nothing was checking that.
 
+**More words made the course slower, until the words got their own nodes.**
+110 nouns for home, family, food and shopping were expected to be volume work.
+Added to `V01` they took the first grammar node from day 20 to day 54 and left
+four nodes open in ninety days, because V01 gates on 80% of every noun it owns.
+They now live in `V02` and `V03`, which open after N06; a grammar item introduces
+a noun only after its meaning item; and the build refuses a stratum whose every
+noun waits behind the node it gates, which is the deadlock that rule would
+otherwise create.
+
+That alone was not free: the two new nodes open alongside N07 and N12 and split
+the day's ten new cards four ways, which pushed N08 out past 150 days. Two rules
+answer it, and together they leave the course **faster than before the words
+were added**. Introduction now takes an item that opens a stratum the learner
+has not met before another form of one they have — a node is mastered through
+its pattern cards, and a second noun in a started stratum spends a card and
+moves no gate. And an answer to a card that is not due advances its schedule at
+most once every three days, because any item scores the cards it touches: a
+105-item stratum's card was rated 30 times in 36 days and its stability stalled
+at 3.2 against the seven-day mastery bar, which stalled one learner in twelve.
+
+Twelve seeds × ninety days at 85% accuracy: **eleven nodes against eight**, 487
+distinct items against 453, the accusative finished on day 57 against 70.5, and
+the genitive reached on 11 of 12 seeds where before it was reached on none. The
+tail is slower, and that is the trade: a flawless learner's locative gates grew
+from 31 strata to 43 with the vocabulary, so N11 lands on day 142 against 113. Nine masculine personal
+nouns (`ojciec`, `mąż`, `kolega`…) are held back: taught from V02, they add N05
+strata nothing can reach.
+
 **One wrong case cost the day's streak, and the instrument blamed the goal.**
 `kot` for `kota` fails the rule and, by criterion 11, leaves the form card alone.
 When that form card was due, the composer had served its one item for it and
@@ -330,9 +359,9 @@ pl/api.py             JSON API; grading never runs in the browser
 pl/content/validate.py  the pipeline's automated stage
 pl/audio.py           the only module that knows how speech is made
 
-data/lexemes.yaml     82 lexemes — 64 nouns and 18 verbs in 9 aspect pairs
-data/nodes.yaml       the skill DAG — 13 nodes
-data/frames.yaml      25 authored frames
+data/lexemes.yaml     192 lexemes — 174 nouns and 18 verbs in 9 aspect pairs
+data/nodes.yaml       the skill DAG — 15 nodes
+data/frames.yaml      27 authored frames
 data/sentences.yaml   32 authored sentences, validated at build time
 data/function_words.yaml  40 lemmas the whitelist has to admit
 tests/data/golden.yaml  the kill-gate corpus — 65 cases

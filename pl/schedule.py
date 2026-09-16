@@ -23,7 +23,7 @@ than two.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from fsrs import Card as FsrsCard
@@ -213,6 +213,33 @@ def ratings_for(item: Item, error_class: ErrorClass) -> dict[str, Rating]:
 #: wrong; only the *schedule* is left alone.
 ONE_REVIEW_PER_DAY = True
 
+#: And an answer to a card that is **not due** advances its schedule at most once
+#: in this many days. A due card is always scored.
+#:
+#: Once a day is not rare enough for a busy card. Any item scores the cards it
+#: touches, so a wide stratum's pattern card is rated on nearly every day the
+#: learner studies — at 105 items, 30 times in 36 days, median gap one day. FSRS
+#: grows stability from the interval actually waited, so the card never earns a
+#: long one: measured at 85% accuracy its stability stalled at **3.2** against
+#: the seven-day mastery bar, while a quiet card in the same node reached 21.5.
+#: One learner in twelve never finished the accusative for it, and the wider the
+#: vocabulary grows the more strata are wide enough to be caught.
+#:
+#: Three days, chosen by measurement over twelve seeds × ninety days at 85%:
+#:
+#:   cooldown  items met  nodes        N06 opened   N08 opened   stalls
+#:   none            439  11 [5-11]    11/12 d51     9/12 d71    1
+#:   2 days          488  11 [5-11]    11/12 d58     7/12 d77    1
+#:   **3 days**      487  11 [10-11]   12/12 d57    11/12 d77    0
+#:   5 days          460  11 [10-11]   12/12 d57     9/12 d79    0
+#:   never early     405  11 [10-11]   12/12 d64     7/12 d88    0
+#:
+#: Two is not enough and five costs coverage. The design's decision that
+#: remediation writes reviews for cards that are not yet due still holds — it is
+#: bounded, not reversed, and a failure is recorded whatever the cooldown says
+#: through the attempt and its error events.
+EARLY_REVIEW_COOLDOWN_DAYS = 3
+
 
 def cards_advanced_since(db: Session, user_id: int, since: datetime) -> set[int]:
     """Cards whose schedule has already moved since `since`.
@@ -289,6 +316,11 @@ def apply_diagnosis(
         if rating is None:
             continue  # unscored: this card's schedule is deliberately untouched
         if ONE_REVIEW_PER_DAY and card_advanced_since(db, card, day_start):
+            continue
+        now = datetime.now(UTC).replace(tzinfo=None)
+        if card.due_at > now and card_advanced_since(
+            db, card, now - timedelta(days=EARLY_REVIEW_COOLDOWN_DAYS)
+        ):
             continue
         apply_rating(db, card, rating, attempt_id)
         applied[population] = rating

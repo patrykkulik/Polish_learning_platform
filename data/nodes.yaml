@@ -189,3 +189,38 @@
 
     There is no neutral choice. Every time you use a verb you are asserting one
     of these, so it is worth getting wrong often and early.
+
+# ------------------------------------------------------------ themed vocabulary
+# More words, without a longer road to the grammar. V01 gates N01 on 80% of its
+# own words, so every noun added to V01 pushes the first grammar node back: 121
+# more took N01 from day 20 to day 54 and left four nodes open in ninety days.
+# Themed nodes own the new words instead, and open after N06 — once the
+# accusative, the course's first hard concept, is done — because a vocabulary
+# node open alongside the early grammar splits the day's new-card budget with
+# it: opened straight after V01, they took N03 from day 41 to day 64.
+#
+# A lexeme names its node with `vocabulary_node`; the default is V01. Grammar
+# introduces one of these words only after its meaning item (see
+# `session.build_session`), which is what makes opening them late safe — and
+# what makes a stratum populated only by their words a deadlock the build
+# refuses (`frames.assert_every_stratum_is_reachable`).
+
+- key: V02
+  type: vocabulary
+  title: Home and family
+  cefr_level: A1
+  prereqs: [N06]
+  explanation_md: |
+    The people in your life, the rooms you live in, and what is in them. Learn
+    each word with its gender, as before — the endings you already know apply
+    to all of them.
+
+- key: V03
+  type: vocabulary
+  title: Food and shopping
+  cefr_level: A1
+  prereqs: [N06]
+  explanation_md: |
+    What you eat and drink, and where you buy it. Every word here fits the
+    sentences you can already make: *Kupuję chleb*, *Nie mam cukru*, *Idę do
+    piekarni*.

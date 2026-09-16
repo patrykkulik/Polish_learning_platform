@@ -1,5 +1,14 @@
 # The M1 lexeme set: 44 nouns, hand-curated and theme-driven.
 #
+# `relation: true` marks a noun English calls *mine*: "I like my brother", never
+# "I like the brother", while `Mam brata` is still "I have a brother". Polish says
+# neither, and the course teaches no `mój` yet.
+#
+# `mass: true` marks a noun whose English gloss takes no article in the singular
+# — "I like coffee", not "a coffee". It is a fact about the English word, and the
+# frames need it because Polish has none: without it they printed "I like cat"
+# for every count noun and "I have the coffee" for every mass one.
+#
 # Frequency is not the ordering principle. Frequency and teachability diverge
 # badly in Polish — the most frequent nouns are disproportionately irregular, and
 # a course that follows a frequency list teaches its hardest morphology first.
@@ -15,12 +24,15 @@
 
 - lemma: kawa
   gloss: coffee
+  mass: true
   theme: food
 - lemma: herbata
   gloss: tea
+  mass: true
   theme: food
 - lemma: woda
   gloss: water
+  mass: true
   theme: food
 - lemma: ryba
   gloss: fish
@@ -51,16 +63,20 @@
   theme: city
 - lemma: praca
   gloss: work
+  mass: true
   # "Idę do pracy" and "Mam pracę" are both ordinary
   themes: [venue, abstract]
 - lemma: matka
   gloss: mother
+  relation: true
   theme: people
 - lemma: córka
   gloss: daughter
+  relation: true
   theme: people
 - lemma: siostra
   gloss: sister
+  relation: true
   theme: people
 
 - lemma: sklep
@@ -99,9 +115,11 @@
   themes: [city, objects]
 - lemma: chleb
   gloss: bread
+  mass: true
   theme: food
 - lemma: ser
   gloss: cheese
+  mass: true
   theme: food
 
 # Masculine animate. The accusative borrows the genitive here, and this is the
@@ -123,15 +141,17 @@
 # because the plural diverges sharply later.
 - lemma: brat
   gloss: brother
+  relation: true
   theme: people
 - lemma: syn
   gloss: son
+  relation: true
   theme: people
 - lemma: nauczyciel
-  gloss: teacher
+  gloss: teacher (m)
   theme: people
 - lemma: lekarz
-  gloss: doctor
+  gloss: doctor (m)
   theme: people
 
 - lemma: okno
@@ -155,9 +175,11 @@
   theme: food
 - lemma: mleko
   gloss: milk
+  mass: true
   theme: food
 - lemma: piwo
   gloss: beer
+  mass: true
   theme: food
 
 # Added for M2. The city and abstract themes give the genitive-preposition and
@@ -165,9 +187,11 @@
 # locative (`w kościele`) carries the ó/o alternation the design singles out.
 - lemma: czas:S
   gloss: time
+  mass: true
   theme: abstract
 - lemma: muzyka
   gloss: music
+  mass: true
   theme: abstract
 - lemma: kino
   gloss: cinema
@@ -197,15 +221,18 @@
 # Abstract nouns, so `interesować się` has something it can plausibly govern.
 - lemma: historia
   gloss: history
+  mass: true
   theme: abstract
 - lemma: sport
   gloss: sport
+  mass: true
   theme: abstract
 - lemma: film
   gloss: film
   theme: abstract
 - lemma: sztuka
   gloss: art
+  mass: true
   theme: abstract
 
 # Verbs enter as aspect PAIRS, never singly. The specification is explicit that
@@ -320,9 +347,13 @@
   theme: abstract
 - lemma: sól
   gloss: salt
+  mass: true
   theme: food
 - lemma: wieś
-  gloss: village
+  gloss: countryside
+  # Both "village" and "countryside"; `Idę na wieś` is the second, and it is the
+  # sense every frame here lands in.
+  mass: true
   theme: venue
   # "na wsi", not "we wsi" — same lexical government as uniwersytet. Note this
   # overrides a preposition the euphonic rule had just been taught to fix: `we`
@@ -338,3 +369,510 @@
 - lemma: twarz
   gloss: face
   theme: objects
+
+# ------------------------------------------------------------ round 1: themed vocabulary
+# Taught by V02 (home and family) and V03 (food and shopping), which open after N06 — see
+# nodes.yaml. Only the themes the frames already gate on, so every noun here lands in
+# sentences that already exist.
+
+# Family and people. The masculine personal nouns that would add strata to N05 — ojciec, mąż, gość,
+# dziadek, wujek, and the -a masculines kolega, mężczyzna, sprzedawca, kierowca — are held back:
+# taught from V02 they populate N05 strata only V02 can reach, which the build refuses as a
+# deadlock. Every noun left here joins an accusative stratum V01 already opens.
+- lemma: babcia
+  gloss: grandmother
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: żona
+  gloss: wife
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: dziecko
+  gloss: child
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: wnuk
+  gloss: grandson
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: wnuczka
+  gloss: granddaughter
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: ciocia
+  gloss: aunt
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: kuzyn
+  gloss: cousin (m)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: kuzynka
+  gloss: cousin (f)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: dziewczyna
+  gloss: girl
+  theme: people
+  vocabulary_node: V02
+- lemma: chłopak
+  gloss: boy
+  theme: people
+  vocabulary_node: V02
+- lemma: przyjaciel
+  gloss: friend (m)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: przyjaciółka
+  gloss: friend (f)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: koleżanka
+  gloss: colleague (f)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: sąsiad
+  gloss: neighbour (m)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: sąsiadka
+  gloss: neighbour (f)
+  relation: true
+  theme: people
+  vocabulary_node: V02
+- lemma: kobieta
+  gloss: woman
+  theme: people
+  vocabulary_node: V02
+- lemma: kelner
+  gloss: waiter
+  theme: people
+  vocabulary_node: V02
+- lemma: kelnerka
+  gloss: waitress
+  theme: people
+  vocabulary_node: V02
+- lemma: kucharz
+  gloss: cook
+  theme: people
+  vocabulary_node: V02
+- lemma: student
+  gloss: student (m)
+  theme: people
+  vocabulary_node: V02
+- lemma: studentka
+  gloss: student (f)
+  theme: people
+  vocabulary_node: V02
+- lemma: lekarka
+  gloss: doctor (f)
+  theme: people
+  vocabulary_node: V02
+- lemma: nauczycielka
+  gloss: teacher (f)
+  theme: people
+  vocabulary_node: V02
+
+# Rooms are venues, not `home`: you go to and are in a kitchen ("Idę do kuchni", "Jestem w
+# kuchni"), and `home` would admit "Kupuję łazienkę".
+- lemma: kuchnia
+  gloss: kitchen
+  theme: venue
+  vocabulary_node: V02
+- lemma: łazienka
+  gloss: bathroom
+  theme: venue
+  vocabulary_node: V02
+- lemma: sypialnia
+  gloss: bedroom
+  theme: venue
+  vocabulary_node: V02
+- lemma: pokój
+  gloss: room
+  theme: venue
+  vocabulary_node: V02
+- lemma: salon
+  gloss: living room
+  theme: venue
+  vocabulary_node: V02
+- lemma: balkon
+  gloss: balcony
+  theme: venue
+  vocabulary_node: V02
+  # "na balkonie", never "w balkonie"
+  locative_preposition: na
+- lemma: piwnica
+  gloss: cellar
+  theme: venue
+  vocabulary_node: V02
+- lemma: garaż
+  gloss: garage
+  themes: [venue, home]
+  vocabulary_node: V02
+
+# Furniture and household things. `fotel` and `zegar` are left out for the reason
+# ziemniak and pomidor are: SGJP gives two surfaces for one tag — the singular
+# genitive is fotela/fotelu and zegara/zegaru — and only one is stored, so the
+# other is graded as a different word. The accusative was screened for this and
+# the genitive was not; `sport` has carried the same defect since M1.
+- lemma: łóżko
+  gloss: bed
+  theme: home
+  vocabulary_node: V02
+- lemma: szafa
+  gloss: wardrobe
+  theme: home
+  vocabulary_node: V02
+- lemma: lodówka
+  gloss: fridge
+  theme: home
+  vocabulary_node: V02
+- lemma: pralka
+  gloss: washing machine
+  theme: home
+  vocabulary_node: V02
+- lemma: kanapa
+  gloss: sofa
+  theme: home
+  vocabulary_node: V02
+- lemma: biurko
+  gloss: desk
+  theme: home
+  vocabulary_node: V02
+- lemma: półka
+  gloss: shelf
+  theme: home
+  vocabulary_node: V02
+- lemma: dywan
+  gloss: carpet
+  theme: home
+  vocabulary_node: V02
+- lemma: lustro
+  gloss: mirror
+  theme: home
+  vocabulary_node: V02
+- lemma: telewizor
+  gloss: television
+  theme: home
+  vocabulary_node: V02
+- lemma: poduszka
+  gloss: pillow
+  theme: home
+  vocabulary_node: V02
+- lemma: koc
+  gloss: blanket
+  theme: home
+  vocabulary_node: V02
+- lemma: ręcznik
+  gloss: towel
+  theme: home
+  vocabulary_node: V02
+- lemma: talerz
+  gloss: plate
+  theme: home
+  vocabulary_node: V02
+- lemma: kubek
+  gloss: mug
+  theme: home
+  vocabulary_node: V02
+- lemma: szklanka
+  gloss: glass
+  theme: home
+  vocabulary_node: V02
+- lemma: filiżanka
+  gloss: cup
+  theme: home
+  vocabulary_node: V02
+- lemma: łyżka
+  gloss: spoon
+  theme: home
+  vocabulary_node: V02
+- lemma: widelec
+  gloss: fork
+  theme: home
+  vocabulary_node: V02
+- lemma: nóż
+  gloss: knife
+  theme: home
+  vocabulary_node: V02
+- lemma: garnek
+  gloss: pot
+  theme: home
+  vocabulary_node: V02
+- lemma: patelnia
+  gloss: frying pan
+  theme: home
+  vocabulary_node: V02
+- lemma: czajnik
+  gloss: kettle
+  theme: home
+  vocabulary_node: V02
+- lemma: mydło
+  gloss: soap
+  theme: home
+  vocabulary_node: V02
+- lemma: kwiat
+  gloss: flower
+  theme: home
+  vocabulary_node: V02
+
+# Food and drink. `kurczak` is m2: "Kupuję kurczaka", the animate accusative on a thing you eat.
+# ziemniak, pomidor, ogórek and banan are left out: SGJP lists them as both m2 and m3, so two
+# accusatives are correct and a single expected answer would mark one of them wrong.
+- lemma: zupa
+  gloss: soup
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: mięso
+  gloss: meat
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: kurczak
+  gloss: chicken
+  theme: food
+  vocabulary_node: V03
+- lemma: ryż
+  gloss: rice
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: makaron
+  gloss: pasta
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: marchewka
+  gloss: carrot
+  theme: food
+  vocabulary_node: V03
+- lemma: cebula
+  gloss: onion
+  theme: food
+  vocabulary_node: V03
+- lemma: sałata
+  gloss: lettuce
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: pomarańcza
+  gloss: orange
+  theme: food
+  vocabulary_node: V03
+- lemma: gruszka
+  gloss: pear
+  theme: food
+  vocabulary_node: V03
+- lemma: truskawka
+  gloss: strawberry
+  theme: food
+  vocabulary_node: V03
+- lemma: cytryna
+  gloss: lemon
+  theme: food
+  vocabulary_node: V03
+- lemma: jajko
+  gloss: egg
+  theme: food
+  vocabulary_node: V03
+- lemma: masło
+  gloss: butter
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: jogurt
+  gloss: yoghurt
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: kiełbasa
+  gloss: sausage
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: szynka
+  gloss: ham
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: cukier
+  gloss: sugar
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: mąka
+  gloss: flour
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: sok
+  gloss: juice
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: wino
+  gloss: wine
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: czekolada
+  gloss: chocolate
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: ciasto
+  gloss: cake
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: ciastko
+  gloss: biscuit
+  theme: food
+  vocabulary_node: V03
+- lemma: bułka
+  gloss: bread roll
+  theme: food
+  vocabulary_node: V03
+- lemma: pizza
+  gloss: pizza
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: kanapka
+  gloss: sandwich
+  theme: food
+  vocabulary_node: V03
+- lemma: sałatka
+  gloss: salad
+  theme: food
+  vocabulary_node: V03
+- lemma: deser
+  gloss: dessert
+  theme: food
+  vocabulary_node: V03
+- lemma: śniadanie
+  gloss: breakfast
+  theme: food
+  vocabulary_node: V03
+- lemma: obiad
+  gloss: lunch
+  theme: food
+  vocabulary_node: V03
+- lemma: kolacja
+  gloss: dinner
+  theme: food
+  vocabulary_node: V03
+- lemma: miód
+  gloss: honey
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: barszcz
+  gloss: beetroot soup
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: rosół
+  gloss: broth
+  mass: true
+  theme: food
+  vocabulary_node: V03
+- lemma: dżem
+  gloss: jam
+  mass: true
+  theme: food
+  vocabulary_node: V03
+
+# Shops and places to eat. `bar:Sm3~u` is the bar you drink in (`baru`), not the unit of pressure
+# (`bara`).
+- lemma: piekarnia
+  gloss: bakery
+  theme: venue
+  vocabulary_node: V03
+- lemma: apteka
+  gloss: pharmacy
+  theme: venue
+  vocabulary_node: V03
+- lemma: kawiarnia
+  gloss: café
+  theme: venue
+  vocabulary_node: V03
+- lemma: bar:Sm3~u
+  gloss: bar
+  theme: venue
+  vocabulary_node: V03
+- lemma: bank
+  gloss: bank
+  theme: venue
+  vocabulary_node: V03
+- lemma: poczta
+  gloss: post office
+  theme: venue
+  vocabulary_node: V03
+  # "na poczcie"
+  locative_preposition: na
+- lemma: targ
+  gloss: market
+  theme: venue
+  vocabulary_node: V03
+  # "na targu"
+  locative_preposition: na
+- lemma: supermarket
+  gloss: supermarket
+  theme: venue
+  vocabulary_node: V03
+- lemma: kiosk
+  gloss: kiosk
+  theme: venue
+  vocabulary_node: V03
+- lemma: cukiernia
+  gloss: cake shop
+  theme: venue
+  vocabulary_node: V03
+- lemma: stołówka
+  gloss: canteen
+  theme: venue
+  vocabulary_node: V03
+- lemma: pizzeria
+  gloss: pizzeria
+  theme: venue
+  vocabulary_node: V03
+
+# Things you shop with.
+- lemma: portfel
+  gloss: wallet
+  theme: objects
+  vocabulary_node: V03
+- lemma: karta
+  gloss: card
+  theme: objects
+  vocabulary_node: V03
+- lemma: koszyk
+  gloss: basket
+  theme: objects
+  vocabulary_node: V03
+- lemma: butelka
+  gloss: bottle
+  theme: objects
+  vocabulary_node: V03
+- lemma: paczka
+  gloss: parcel
+  theme: objects
+  vocabulary_node: V03
+- lemma: stolik
+  gloss: small table
+  theme: home
+  vocabulary_node: V03

@@ -8,6 +8,7 @@ asserted only indirectly, and the audio endpoint not at all.
 
 from __future__ import annotations
 
+import re
 import warnings
 
 import pytest
@@ -75,13 +76,45 @@ def test_a_session_never_carries_an_answer(client):
             i.expected_answer for i in db.scalars(select(Item))
         }
     blob = str(payload)
-    leaked = [a for a in answers if a in blob and len(a) > 3]
+    # Whole words, not substrings. `kuchni` is an answer and `kuchnia` a
+    # legitimate option elsewhere in the session; a substring test reads the
+    # option as a leak of the answer it merely contains.
+    leaked = [
+        a
+        for a in answers
+        if len(a) > 3 and re.search(rf"(?<!\w){re.escape(a)}(?!\w)", blob)
+    ]
     # A multiple-choice item legitimately ships its options, one of which is
     # correct — but unlabelled. Anything else appearing is a leak.
     for item in payload["items"]:
         for option in item.get("options") or []:
             leaked = [a for a in leaked if a != option]
     assert not leaked, f"expected answers reachable before submission: {leaked[:5]}"
+
+
+def test_no_exercise_type_carries_its_answer(client):
+    """Criterion 17 for every type, not only the ones a first session holds.
+
+    A new learner's session is multiple choice throughout, where the answer is
+    legitimately one of the options — so the session-level test above cannot
+    fail on it. Ablated by returning `expected_answer` from `_serialise`: this
+    test fails, the one above does not.
+    """
+    http, Session = client
+    with Session() as db:
+        by_type = {}
+        for item in db.scalars(select(Item)):
+            by_type.setdefault(item.exercise_type, item)
+        assert len(by_type) >= 5, "too few exercise types to prove anything"
+        for exercise_type, item in by_type.items():
+            payload = api._serialise(db, item)
+            options = payload.pop("options") or []
+            assert item.expected_answer not in str(payload), (
+                f"a {exercise_type} item ships its answer: {payload}"
+            )
+            assert item.expected_answer in options or not options, (
+                "the answer vanished from the options, which is a different bug"
+            )
 
 
 def test_no_item_is_labelled_with_which_option_is_right(client):

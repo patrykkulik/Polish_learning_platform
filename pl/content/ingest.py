@@ -122,6 +122,50 @@ def lexeme_locatives() -> dict[str, str]:
     }
 
 
+#: The vocabulary node a noun belongs to when its declaration names none.
+DEFAULT_VOCABULARY_NODE = "V01"
+
+
+def lexeme_vocabulary_nodes() -> dict[str, str]:
+    """lemma -> the vocabulary node that teaches it, `V01` unless declared.
+
+    One owner per word. A vocabulary node gates on the senses of the words it
+    owns, so a word counted by two nodes would be one card mastered twice, and a
+    word counted by none would have no meaning item to be introduced through —
+    and grammar introduces a word only after its meaning item.
+    """
+    return {
+        entry["lemma"]: entry.get("vocabulary_node", DEFAULT_VOCABULARY_NODE)
+        for entry in _load("lexemes.yaml")
+    }
+
+
+def mass_nouns() -> set[str]:
+    """The lemmas whose English gloss takes no article in the singular.
+
+    Polish has no articles, so every English gloss the course prints is authored
+    — and a frame that writes "a {gloss}" produces "a coffee" for a mass noun and
+    "I like cat" for a count one if it writes nothing. The distinction is a fact
+    about the English word, not about the Polish one, so it is declared beside
+    the gloss.
+    """
+    return {
+        entry["lemma"] for entry in _load("lexemes.yaml") if entry.get("mass")
+    }
+
+
+def relation_nouns() -> set[str]:
+    """The lemmas English calls *mine* rather than *a* or *the*.
+
+    "I like the brother" is not English; "I like my brother" is, and Polish says
+    neither — `Lubię brata` carries no possessive at all. The course teaches no
+    `mój` yet, so the possessive lives in the English gloss until it does.
+    """
+    return {
+        entry["lemma"] for entry in _load("lexemes.yaml") if entry.get("relation")
+    }
+
+
 def lexeme_themes() -> dict[str, set[str]]:
     """lemma -> its themes, for frames that only make sense with some of the set.
 
@@ -326,7 +370,7 @@ def ingest_nodes(db: Session, lexemes: dict[str, Lexeme]) -> dict[str, Node]:
         rule_key = entry.get("rule_key")
 
         # A grammar node's lexemes are those whose gender it covers; a vocabulary
-        # node owns the whole set.
+        # node owns the words declared for it.
         eligible = [
             lex
             for lex in lexemes.values()
@@ -337,9 +381,31 @@ def ingest_nodes(db: Session, lexemes: dict[str, Lexeme]) -> dict[str, Node]:
             # vocabulary node gates on the senses of its lexemes, so adopting a
             # lexeme no item covers puts an unmasterable referent straight into
             # the denominator — twelve verbs would push V01's 80% out of reach.
+            #
+            # And only the words this node owns. V01 once owned every noun, so
+            # its 80% grew with the vocabulary and pushed N01 back with it: 121
+            # more nouns took the first grammar node from day 20 to day 54.
             wanted = entry.get("pos", "subst")
-            eligible = [lex for lex in lexemes.values() if lex.pos == wanted]
+            owner = lexeme_vocabulary_nodes()
+            eligible = [
+                lex
+                for lex in lexemes.values()
+                if lex.pos == wanted and owner.get(lex.lemma) == entry["key"]
+            ]
 
+        # Reconciled, not merely added to. `vocabulary_node` is hand-edited, and
+        # a membership that only ever grows leaves a moved word owned by both
+        # nodes: its sense counts towards two gates, and the one it is counted
+        # by may be a node whose meaning item it no longer has. Seventeen words
+        # moved into V01 that way put 17 senses into the root node's gate whose
+        # only item sits behind N06, which makes V01 — and so the whole course —
+        # unmasterable, with every row well-formed and nothing reported.
+        keep = {lex.id for lex in eligible}
+        for link in db.scalars(
+            select(NodeLexeme).where(NodeLexeme.node_id == node.id)
+        ):
+            if link.lexeme_id not in keep:
+                db.delete(link)
         for lex in eligible:
             if db.get(NodeLexeme, (node.id, lex.id)) is None:
                 db.add(NodeLexeme(node_id=node.id, lexeme_id=lex.id))

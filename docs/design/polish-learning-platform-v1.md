@@ -859,6 +859,103 @@ numbers in a header. Two things are added here, and both are deliberately quiet.
   `GEN_POSSESSION`, `GEN_PREPOSITION` — are wholly theme-scoped on purpose: "Idę do ___" is a sentence
   about venues, and a stratum it never reaches is one that rule was never teaching.
 
+### Vocabulary grows in themed nodes, and a word comes before its endings
+
+Adding words was expected to be volume work, not design work. Measured, it was not: the graph did
+not scale with its vocabulary, in two ways.
+
+- **V01 gated on every noun.** A vocabulary node's gate is 80% of the senses it owns, and V01 owned the
+  whole noun set — so each noun added pushed back N01, and everything behind it. `Verified:` 121 more
+  nouns took N01 from day **20** to day **54.5** at 85% accuracy, and nodes opened in ninety days from
+  8 to **4**. Nine of those nouns also added N05 strata; leaving them out changed nothing, so the gate
+  was the cause.
+- **A vocabulary node open beside the grammar splits the day's budget with it.** Introduction is
+  round-robin by node. Fixing the gate alone — themed nodes opening straight after V01, or V01 gating on
+  a core subset, or on a fixed count of 52 words (the last two identical in effect) — brought N01 back to
+  day 20 but took N03 from day 41 to 62–64 and N05 from 56 to 75–79, because N01's share of ten cards a
+  day fell from all of it to a half or a third.
+- **Design choice: new words belong to themed vocabulary nodes that open after N06.** `V02` Home and
+  family, `V03` Food and shopping. A lexeme names its node with `vocabulary_node`; the default is V01,
+  which keeps its 64 nouns and its gate. N06 is where the accusative — the course's first hard concept
+  — is done, and nothing on the grammar path depends on V02 or V03.
+- **Design choice: grammar introduces a word only after its meaning item.** Opening the themed nodes
+  late is only safe with this. Grammar items are built for every noun, so without it `lodówka` reaches
+  the learner as "Write the Polish for *fridge*": `Verified:` 52 of the 116 words a learner met over
+  ninety days arrived through a grammar item first, and 51 of them never through their meaning item.
+  Applied to the words a vocabulary node owns — verbs have senses but no meaning items, and keying the
+  rule on "has a sense" would stop every aspect item from being introduced.
+- **The rule has a deadlock in it, and the build refuses it.** A stratum counts toward its node's gate
+  from the moment it exists. If every noun populating it is taught by a vocabulary node downstream of
+  that grammar node, its items wait for a meaning card that waits for the node that waits for them.
+  `Verified:` `ojciec`, `mąż`, `gość`, `dziadek`, `wujek`, `kolega`, `mężczyzna`, `sprzedawca` and
+  `kierowca` in V02 gave N05 five such strata; N05 was never mastered on any seed, and a flawless
+  learner's streak fell to 36 days. `frames.assert_every_stratum_is_reachable` names the strata and
+  their nouns. Those nine are held back for a later round, which needs a way into N05 that V02 cannot
+  give them.
+
+Six seeds × ninety days, median:
+
+| | nodes (85% / flawless) | items met | N03 day | N05 day | N07 day | words met through grammar first |
+|---|---:|---:|---:|---:|---:|---:|
+| 82 lexemes, before | 8 / 9 | 443 / 502 | 41 / 36 | 56 / 45.5 | 70.5 / 58.5 | 10 / 18 |
+| +121 nouns in V01 | 4 / 5 | 236 / 393 | 86.5 / 70.5 | — / 81 | — / — | 0 / 0 |
+| themed nodes after V01 | 7 / 7 | 360 / 435 | 64 / 59 | 75 / 70 | — / — | 0 / 0 |
+| themed nodes after N06, no word-first rule | 5 / 10 | 532 / 711 | 41 / 36 | 71 / 45.5 | — / 81.5 | 52 / 85 |
+| **after N06, word first, 110 nouns** | **10 / 10** | **460 / 568** | **41 / 36** | **56 / 45.5** | **70.5 / 58.5** | **3.5 / 15** |
+
+V02 and V03 open when N06 does, which the two rules below bring forward to day 57 at 85% accuracy from
+the 70.5 the smaller vocabulary managed.
+
+**On its own the themed-node change was not free, and ninety days hid that.** V02 and V03 open on the
+same day as N07 and N12, so introduction round-robined over four nodes where it used to use two.
+Measured to 150 days, seeds 1–4: a flawless learner's N08 moved from day 76 to **125**, and N09, N10
+and N11 — which opened on days 99, 99 and 111 — did not open at all. At 85% accuracy N08 opened around
+day 110 before and did not open at all after. That is what the two rules below were added to answer.
+
+Two rules were added in response, and with them the course is faster than it was before the words
+were added, not merely faster than P4:
+
+- **Introduction takes an item that opens an unstarted stratum before another form of one already
+  started.** Two passes over the same pools, the first admitting only stratum-openers. A node is
+  mastered through its pattern cards, so a second noun in a started stratum spends one of the day's ten
+  cards and moves no gate. Ordering *within* a node was measured and is not enough — the round-robin
+  still gives every vocabulary pool its turn, which left N08 on day 118.5 rather than 99.5.
+- **An answer to a card that is not due advances its schedule at most once every three days**
+  (`EARLY_REVIEW_COOLDOWN_DAYS`). Without it the stratum-first draw stalled one learner in twelve: any
+  item scores the cards it touches, so a 105-item stratum's pattern card was rated 30 times in 36 days,
+  median gap one day, and its stability stalled at **3.2** against the seven-day bar while a quiet card
+  in the same node reached 21.5. The bound is measured — see `pl/schedule.py`; two days still stalled
+  and five cost coverage. The design's decision that remediation writes reviews for cards that are not
+  yet due is bounded by this, not reversed.
+
+Twelve seeds × ninety days at 85%, and four seeds × 150 days:
+
+| | nodes (12 seeds) | items met | N06 opens | N08 opens | stalls |
+|---|---|---:|---|---|---:|
+| before, 82 lexemes | 8 [8–8] | 453 | 12/12, day 70.5 | 0/12 | 0 |
+| 192 lexemes, id order | 11 [5–11] | 439 | 11/12, day 51 | 9/12 | 1 |
+| **192 lexemes, both rules** | **11 [10–11]** | **487** | **12/12, day 57** | **11/12, day 77** | **0** |
+
+At 150 days the same learner meets 775 items against 650 and opens N07 on day 57.5 against 75.5, N08 on
+83.5 against 109; a flawless learner opens fourteen nodes against twelve and meets 995 items against
+728. **What is still slower is the tail:** a flawless learner's N09 and N10 land on day 127 against
+100.5, and N11 on 142 against 113, because those gates grew with the vocabulary — N11 from 31 strata to
+43, so `strata_needed` is 35 rather than 25. At 85% accuracy nothing past N08 opens within 150 days,
+against N09 and N10 on one seed of four before.
+
+Three other ways out were measured and rejected:
+
+- **Open V02/V03 later, after N08 or N11.** Refused by the build, and correctly: the new nouns put
+  strata into N07, N08 and N11 that only V02/V03 words populate — `babcia`, `kuchnia`, `pokój`, `nóż`,
+  `cukier` — so those nodes wait on words that wait on them. The reachability guard names all seven.
+  This is the same deadlock that held the nine masculine personal nouns back, and it says something
+  general: a vocabulary node can only open *before* the nodes whose strata its own words create.
+- **V03 behind V02.** 780 items against 756 at 85%, and N08 still never opens; it moves N08 for a
+  flawless learner from 125 to 119.
+- **Cap vocabulary at three of the day's ten cards.** Measured twice: capping V01 too delays N01 and
+  everything after it, and capping only once grammar is open still left N08 on day 136.5. The budget
+  was never the problem — what the budget was spent *on* was.
+
 ### Offline contradicts server-side grading
 
 **Two spec §7 constraints that cannot both hold.**
@@ -1033,7 +1130,12 @@ flowchart LR
     N04 --> N05["<b>N05</b> · grammar<br/>accusative sg <i>m-anim</i><br/><b>the animacy trap</b><br/>kot → kota"]
     N02 --> N06
     N05 --> N06["<b>N06</b> · function<br/>describing what you have<br/><i>composes N02 + N03–N05</i>"]
+    N06 --> V02["<b>V02</b> · vocab<br/>home and family"]
+    N06 --> V03["<b>V03</b> · vocab<br/>food and shopping"]
 ```
+
+V02 and V03 were added after M1 and gate nothing; see §"Vocabulary grows in themed nodes, and a word
+comes before its endings".
 
 Four pattern strata under the accusative rule — `f-a`, `m-inanim`, `m-anim`, `n-o` — so §4.4's 80%
 threshold means three of four, and a learner may carry one weak paradigm class into N06 while the
@@ -1395,8 +1497,9 @@ to settle an argument — it will confidently settle it the wrong way.**
   `Verified:` eight nodes open on **all six seeds**, where it was 4,8,8,8,9,9 before; median items
   605 of 983.
 
-  Beyond that the limit is a ceiling rather than a wall, and it is content — 82 lexemes is roughly
-  3% of conversational B1. See §Content.
+  Beyond that the limit is a ceiling rather than a wall, and it is content — 82 lexemes was roughly
+  3% of conversational B1. See §Content, and §"Vocabulary grows in themed nodes" for why adding them
+  was not only volume work.
 
 **Unimplemented, not merely defective**
 
@@ -1422,24 +1525,56 @@ to settle an argument — it will confidently settle it the wrong way.**
 
 **Content**
 
-- 82 lexemes against the ~600 M2 calls for, and the shortfall lands unevenly. Per-rule stratification
-  keeps each node's partition honest, but a stratum needs items in it before "the card generalises
-  across its stratum" means anything. Measured at this revision:
+- 192 lexemes (174 nouns, 18 verbs) against the ~600 M2 calls for, and the shortfall lands unevenly.
+  Per-rule stratification keeps each node's partition honest, but a stratum needs items in it before
+  "the card generalises across its stratum" means anything. Measured at this revision, after the first
+  round of themed vocabulary:
 
   | node | strata | items | items/stratum |
   |------|-------:|------:|--------------:|
   | N12 aspect | 11 | 18 | 1.6 |
-  | N09 genitive — possession | 3 | 11 | 3.7 |
-  | N11 locative | 28 | 87 | 3.1 |
-  | N07 instrumental | 8 | 34 | 4.3 |
-  | N10 genitive — prepositions | 12 | 47 | 3.9 |
+  | N11 locative | 43 | 224 | 5.2 |
+  | N09 genitive — possession | 5 | 34 | 6.8 |
+  | N10 genitive — prepositions | 16 | 113 | 7.1 |
+  | N07 instrumental | 10 | 83 | 8.3 |
+  | N08 genitive — negation | 24 | 321 | 13.4 |
+
+  The nouns thickened every case node and left aspect where it was. They also *widened* the later
+  gates — N11 from 31 strata to 43, N08 from 18 to 24 — because a stem alternation is its own stratum.
+  That is correct, and it is a cost: `strata_needed(43)` is 35. Nothing in ninety simulated days
+  reaches those nodes yet, so it is unmeasured.
 
   N12 is the thinnest at 1.6, and it is the node whose cards are hardest to generalise anyway, since
   an aspect pair is learned pair by pair. More lemmas is the fix, not fewer strata — collapsing
   strata would restore the false generalisation §"Pattern cards are stratified" exists to prevent.
-- Every Polish frame and gloss is authored here and **wants a native-speaker review**. The inflected
-  forms are looked up rather than written and cannot be wrong unless SGJP is; the sentence frames and
-  the English glosses around them are not protected that way.
+- ~~Every Polish frame and gloss is authored here and **wants a native-speaker review**.~~ **Reviewed,
+  and it found three things no test could.** The inflected forms are looked up rather than written and
+  cannot be wrong unless SGJP is; the sentences and English around them are not protected that way, and
+  the first owner review of the generated corpus returned thirteen flags in three classes:
+
+  - **Direction is governed lexically, like place.** `Idę do poczty` and `Idę do targu` are not said;
+    `Idę na pocztę`, `Idę na targ` are. The `locative_preposition` field already recorded the fact for
+    `w`/`na` — it now gates direction too, through `place_preposition` on the frame, with `DIRECTION_NA`
+    and `FREE_IDE_NA` as the other half of `GEN_DO`. This was handoff step #3, and the content made it
+    cheap: these nouns are already in the accusative strata the learner knows, so nothing is stratified.
+  - **Every English article in the course was authored, and none of them knew about mass nouns.** The
+    frames printed "I like cat" for every count noun and "I have the coffee" for every mass one. A frame
+    now declares `article: a|the` and a lexeme declares `mass: true`, so "I like a cat", "I like coffee",
+    "I like an apple" all come out of one rule. **This is the largest single correction the corpus has
+    had, and no test could have found it:** every sentence was well-formed Polish with well-formed
+    English beside it, and only a reader could see the two did not match.
+  - **A frame can be wrong for one word without being wrong.** `Mam dziewczynę` is heard as "I have a
+    girlfriend", so `exclude_lemmas` keeps `chłopak` and `dziewczyna` out of the three possession frames
+    while they stay in every frame whose reading is plain.
+  - **English wants a possessive where Polish says nothing.** "I like the brother" is not English and
+    `Lubię brata` carries no possessive at all, so `relation: true` marks the eighteen words English
+    calls *mine* — family, friends, colleagues, neighbours — and they render "I like my brother",
+    "This is my brother's house", while the frames that count them keep the indefinite through
+    `relation_article: a`: "I have a brother". The possessive lives in the gloss until the course
+    teaches `mój`, which is the honest place for it: nothing in the Polish has changed.
+
+  A rebuild now repoints a stored item's English and its vocabulary node when they change, which an
+  item's identity — type, prompt, answer — does not cover.
 
 ---
 

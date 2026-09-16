@@ -64,14 +64,22 @@
 - key: TO_JEST
   exercise_type: cloze
   template: "To jest ___."
-  gloss: "This is the {gloss}."
+  gloss: "This is {gloss}."
+  article: a
+  # `wieś` stays here although "This is countryside" reads poorly: TO_JEST is
+  # NOM_PREDICATE's one ungated frame, and a universal rule that stops reaching a
+  # noun stops teaching its paradigm class — silently, which is what
+  # `test_the_universal_rules_still_reach_every_noun` exists to prevent. The
+  # frames that can afford to drop it, TU_JEST and LUBIE, do.
   case: nom
   rule_key: NOM_PREDICATE
 
 - key: TU_JEST
   exercise_type: cloze
   template: "Tu jest ___."
-  gloss: "Here is the {gloss}."
+  gloss: "Here is {gloss}."
+  article: a
+  exclude_lemmas: [wieś]
   case: nom
   rule_key: NOM_PREDICATE
   # Locatable things. "Tu jest czas" is not a place to be.
@@ -80,7 +88,8 @@
 - key: WIDZE
   exercise_type: cloze
   template: "Widzę ___."
-  gloss: "I see the {gloss}."
+  gloss: "I see {gloss}."
+  article: the
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   # Visible things. You cannot see "czas" or "historia".
@@ -89,9 +98,16 @@
 - key: MAM
   exercise_type: cloze
   template: "Mam ___."
-  gloss: "I have the {gloss}."
+  gloss: "I have {gloss}."
+  article: a
+  # "I have a brother", not "I have my brother".
+  relation_article: a
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
+  # `chłopak` and `dziewczyna` are excluded here and from the two frames below:
+  # `Mam dziewczynę` is heard as "I have a girlfriend", and a course that glosses
+  # it "a girl" teaches the learner to say something they did not mean.
+  exclude_lemmas: [chłopak, dziewczyna]
   # Ownable. Excludes venue: "Mam dom" is fine but "Mam kino" is not.
   themes: [food, objects, home, clothes, animals, people, abstract]
 
@@ -99,13 +115,16 @@
   exercise_type: cloze
   template: "Lubię ___."
   gloss: "I like {gloss}."
+  article: a
+  exclude_lemmas: [wieś]
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
 
 - key: KUPUJE
   exercise_type: cloze
   template: "Kupuję ___."
-  gloss: "I am buying the {gloss}."
+  gloss: "I am buying {gloss}."
+  article: a
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   # Purchasable, and narrowly so.
@@ -117,7 +136,8 @@
 - key: CZEKAM_NA
   exercise_type: prep_drill
   template: "Czekam na ___."
-  gloss: "I am waiting for the {gloss}."
+  gloss: "I am waiting for {gloss}."
+  article: the
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   # You wait for people, animals, an order, an event.
@@ -129,7 +149,8 @@
 - key: MCQ_ACC
   exercise_type: mcq
   template: "Widzę ___."
-  gloss: "I see the {gloss}."
+  gloss: "I see {gloss}."
+  article: the
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   distractor_cases: [nom, gen, loc]
@@ -153,7 +174,10 @@
 - key: INST_PREDICATE
   exercise_type: cloze
   template: "Jestem ___."
-  gloss: "I am the {gloss}."
+  gloss: "I am {gloss}."
+  article: a
+  # "I have a brother", not "I have my brother".
+  relation_article: a
   case: inst
   rule_key: INST
   themes: [people]
@@ -161,7 +185,8 @@
 - key: INST_WITH
   exercise_type: cloze
   template: "Idę z ___."
-  gloss: "I am going with the {gloss}."
+  gloss: "I am going with {gloss}."
+  article: the
   case: inst
   rule_key: INST
   themes: [people, animals]
@@ -178,9 +203,13 @@
 - key: GEN_NIE_MAM
   exercise_type: cloze
   template: "Nie mam ___."
-  gloss: "I do not have the {gloss}."
+  gloss: "I do not have {gloss}."
+  article: a
+  # "I have a brother", not "I have my brother".
+  relation_article: a
   case: gen
   rule_key: GEN_NEGATION
+  exclude_lemmas: [chłopak, dziewczyna]
   # The negation of MAM, so the same gate.
   themes: [food, objects, home, clothes, animals, people, abstract]
 
@@ -194,7 +223,8 @@
 - key: GEN_POSSESSOR
   exercise_type: cloze
   template: "To jest dom ___."
-  gloss: "This is the {gloss}'s house."
+  gloss: "This is {gloss}'s house."
+  article: the
   case: gen
   rule_key: GEN_POSSESSION
   themes: [people]
@@ -202,15 +232,21 @@
 - key: GEN_DO
   exercise_type: cloze
   template: "Idę do ___."
-  gloss: "I am going to the {gloss}."
+  gloss: "I am going to {gloss}."
+  article: the
   case: gen
   rule_key: GEN_PREPOSITION
   themes: [venue]
+  # Only the places that take `w`. Direction is governed by the same lexical fact
+  # as place: a noun that is `na poczcie` is `na pocztę`, never `do poczty`. See
+  # DIRECTION_NA.
+  place_preposition: w
 
 - key: GEN_DLA
   exercise_type: cloze
   template: "To jest dla ___."
-  gloss: "This is for the {gloss}."
+  gloss: "This is for {gloss}."
+  article: the
   case: gen
   rule_key: GEN_PREPOSITION
   themes: [people, animals]
@@ -219,7 +255,8 @@
 - key: LOC_W
   exercise_type: cloze
   template: "Jestem w ___."
-  gloss: "I am at the {gloss}."
+  gloss: "I am at {gloss}."
+  article: the
   case: loc
   rule_key: LOC_PREPOSITION
   themes: [venue]
@@ -227,7 +264,8 @@
 - key: LOC_O
   exercise_type: cloze
   template: "Myślę o ___."
-  gloss: "I am thinking about the {gloss}."
+  gloss: "I am thinking about {gloss}."
+  article: the
   case: loc
   rule_key: LOC_PREPOSITION
 
@@ -261,7 +299,8 @@
   exercise_type: free_translation
   template: ""
   sentence: "Widzę {form}"
-  gloss: "Say in Polish: I see the {gloss}."
+  gloss: "Say in Polish: I see {gloss}."
+  article: the
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   # Same sentence as WIDZE.
@@ -271,7 +310,11 @@
   exercise_type: free_translation
   template: ""
   sentence: "Mam {form}"
-  gloss: "Say in Polish: I have the {gloss}."
+  gloss: "Say in Polish: I have {gloss}."
+  article: a
+  # "I have a brother", not "I have my brother".
+  relation_article: a
+  exclude_lemmas: [chłopak, dziewczyna]
   case: acc
   rule_key: ACC_AFTER_TRANSITIVE_VERB
   # Same sentence as MAM.
@@ -281,7 +324,37 @@
   exercise_type: free_translation
   template: ""
   sentence: "Idę do {form}"
-  gloss: "Say in Polish: I am going to the {gloss}."
+  gloss: "Say in Polish: I am going to {gloss}."
+  article: the
   case: gen
   rule_key: GEN_PREPOSITION
   themes: [venue]
+  place_preposition: w
+
+# --------------------------------------------------------------- direction
+# `do` + genitive and `na` + accusative are both "going to", and which one a
+# place takes is a fact about the word — the same fact that decides `w sklepie`
+# against `na poczcie`, so `locative_preposition` decides both. Without this the
+# course built `Idę do poczty` and `Idę do targu`, which a Polish speaker does
+# not say. The accusative here is the one the learner already knows from `Widzę
+# ___` and `Czekam na ___`; nothing new is stratified.
+- key: DIRECTION_NA
+  exercise_type: cloze
+  template: "Idę na ___."
+  gloss: "I am going to {gloss}."
+  article: the
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  themes: [venue]
+  place_preposition: na
+
+- key: FREE_IDE_NA
+  exercise_type: free_translation
+  template: ""
+  sentence: "Idę na {form}"
+  gloss: "Say in Polish: I am going to {gloss}."
+  article: the
+  case: acc
+  rule_key: ACC_AFTER_TRANSITIVE_VERB
+  themes: [venue]
+  place_preposition: na

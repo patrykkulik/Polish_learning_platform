@@ -522,6 +522,23 @@ def _sense_by_form(db: Session) -> dict[int, int]:
     return {form_id: sense_id for form_id, sense_id in rows}
 
 
+def _forms_of_taught_words(db: Session) -> set[int]:
+    """Every form of a word some vocabulary node teaches.
+
+    The word-first rule applies to these and nothing else. Verbs have senses but
+    no meaning items, so keying the rule on "has a sense" would stop every aspect
+    item from ever being introduced.
+    """
+    return set(
+        db.scalars(
+            select(Form.id)
+            .join(NodeLexeme, NodeLexeme.lexeme_id == Form.lexeme_id)
+            .join(Node, Node.id == NodeLexeme.node_id)
+            .where(Node.type == "vocabulary")
+        )
+    )
+
+
 def _item_referents(
     node: Node, item: Item, sense_by_form: dict[int, int]
 ) -> set[tuple[str, int]]:
@@ -648,6 +665,7 @@ def build_session(
     budget = _introduction_budget(db, user_id, settings)
     started = _started_referents(db, user_id)
     sense_by_form = _sense_by_form(db)
+    taught_words = _forms_of_taught_words(db)
 
     # 1 — debt. A card whose schedule has already advanced today is not debt: it
     # has had its turn, and under `ONE_REVIEW_PER_DAY` answering it again cannot
@@ -702,8 +720,8 @@ def build_session(
         # is arbitrary, and taking one node at a time means the first unlocked
         # node swallows the whole daily cap — a learner would spend day one on
         # vocabulary alone and never reach the grammar the course is *for*.
-        pools = [
-            (node, iter(db.scalars(select(Item).where(Item.node_id == node.id)).all()))
+        node_items = [
+            (node, list(db.scalars(select(Item).where(Item.node_id == node.id)).all()))
             for node in db.scalars(select(Node))
             if is_unlocked(db, user_id, node)
         ]
@@ -715,55 +733,92 @@ def build_session(
         # them, but because `node.id` decided who ate first. Offset by how much
         # the learner already holds, so it advances with them and stays
         # deterministic.
-        if pools:
-            offset = len(started) % len(pools)
-            pools = pools[offset:] + pools[:offset]
-        while pools and introduced < budget and total() < limit:
-            progressed = False
-            for entry in list(pools):
-                node, pool = entry
-                if introduced >= budget or total() >= limit:
+        if node_items:
+            offset = len(started) % len(node_items)
+            node_items = node_items[offset:] + node_items[:offset]
+        # Two passes over the same pools. The first takes only items that open a
+        # stratum the learner has not met; the second is the ordinary draw.
+        #
+        # A node is mastered through its pattern cards, so an item in an unstarted
+        # stratum creates the card the gate counts, while another noun in a
+        # stratum already started spends one of the day's ten cards and moves no
+        # gate. One pass in id order lets the second kind crowd out the first as
+        # soon as the vocabulary is large: `Verified:` with 110 nouns added, N08
+        # stopped opening at all within 150 days at 85% accuracy, and a flawless
+        # learner lost N09, N10 and N11 with it. Two passes, and the same learner
+        # opens eleven nodes against nine, with N08 on day 99.5 against the 109
+        # the smaller vocabulary managed.
+        #
+        # Ordering *within* a node is not enough, and was measured: the
+        # round-robin still gives every vocabulary pool its turn, so N08 landed on
+        # day 118.5 rather than 99.5. The preference has to hold across nodes.
+        for openers_only in (True, False):
+            pools = [(node, iter(items)) for node, items in node_items]
+            while pools and introduced < budget and total() < limit:
+                progressed = False
+                for entry in list(pools):
+                    node, pool = entry
+                    if introduced >= budget or total() >= limit:
+                        break
+                    for item in pool:
+                        if not offerable(item):
+                            continue
+                        refs = _item_referents(node, item, sense_by_form)
+                        if openers_only and not any(
+                            population == PATTERN
+                            for population, _ in refs - started
+                        ):
+                            continue
+                        # A word before its endings. Grammar items exist for every
+                        # noun, and a themed vocabulary node opens after the grammar
+                        # that inflects its words — so without this the learner is
+                        # asked to write the Polish for "fridge" before ever seeing
+                        # `lodówka`. With V02 and V03 opening after N06, 52 of the
+                        # 116 words a learner met over ninety simulated days arrived
+                        # that way, 51 of them never through their meaning item.
+                        if (
+                            node.type != "vocabulary"
+                            and item.target_form_id in taught_words
+                            and (LEXICAL, sense_by_form.get(item.target_form_id))
+                            not in started
+                        ):
+                            continue
+                        # Skip only when the item is entirely old. A pattern card is
+                        # shared by every lexeme in its stratum, so testing for *any*
+                        # overlap lets the first item of a stratum claim it for all
+                        # the others — the queue then dries up having offered a small
+                        # fraction of the curriculum, with the rest reachable only by
+                        # chance through remediation.
+                        if refs and refs <= started:
+                            continue
+                        # The budget is counted in cards, which is what DAILY_NEW_CAP
+                        # names and what the day actually costs: the first item of a
+                        # stratum introduces both a form and a rule, later ones only
+                        # a form. An item that does not fit waits for tomorrow rather
+                        # than being allowed to overshoot the cap.
+                        cost = len(refs - started) or 1
+                        if cost > budget - introduced:
+                            continue
+                        if item.id in seen:
+                            # Already claimed by the debt segment this session. Not a
+                            # reason to give up on this pool: `add` reports "full" and
+                            # "already taken" with the same False, and treating the
+                            # second as the first ends introduction for the day with
+                            # budget and room still unspent — handing the room to
+                            # remediation instead. The remediation segment carries a
+                            # comment about this exact trap; this loop fell into it.
+                            continue
+                        if add(new_items, item):
+                            started |= refs
+                            introduced += cost
+                            progressed = True
+                        break
+                    else:
+                        pools.remove(entry)
+                # Every remaining pool held only items too expensive for what is left
+                # of the budget. Without this the outer loop spins on them forever.
+                if not progressed:
                     break
-                for item in pool:
-                    if not offerable(item):
-                        continue
-                    refs = _item_referents(node, item, sense_by_form)
-                    # Skip only when the item is entirely old. A pattern card is
-                    # shared by every lexeme in its stratum, so testing for *any*
-                    # overlap lets the first item of a stratum claim it for all
-                    # the others — the queue then dries up having offered a small
-                    # fraction of the curriculum, with the rest reachable only by
-                    # chance through remediation.
-                    if refs and refs <= started:
-                        continue
-                    # The budget is counted in cards, which is what DAILY_NEW_CAP
-                    # names and what the day actually costs: the first item of a
-                    # stratum introduces both a form and a rule, later ones only
-                    # a form. An item that does not fit waits for tomorrow rather
-                    # than being allowed to overshoot the cap.
-                    cost = len(refs - started) or 1
-                    if cost > budget - introduced:
-                        continue
-                    if item.id in seen:
-                        # Already claimed by the debt segment this session. Not a
-                        # reason to give up on this pool: `add` reports "full" and
-                        # "already taken" with the same False, and treating the
-                        # second as the first ends introduction for the day with
-                        # budget and room still unspent — handing the room to
-                        # remediation instead. The remediation segment carries a
-                        # comment about this exact trap; this loop fell into it.
-                        continue
-                    if add(new_items, item):
-                        started |= refs
-                        introduced += cost
-                        progressed = True
-                    break
-                else:
-                    pools.remove(entry)
-            # Every remaining pool held only items too expensive for what is left
-            # of the budget. Without this the outer loop spins on them forever.
-            if not progressed:
-                break
 
     # 3 — remediation, filling whatever debt and introduction left over.
     if total() < limit:

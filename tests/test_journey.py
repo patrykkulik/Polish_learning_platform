@@ -778,6 +778,385 @@ def test_introduction_does_not_stall_while_material_remains(db, user):
     )
 
 
+def test_grammar_introduces_a_noun_only_after_its_meaning(db, user):
+    """A word is met as a word before it is met as an ending.
+
+    Grammar items are built for every noun, and a vocabulary node can open well
+    after the grammar nodes that inflect its words. Without this the learner is
+    asked "Write the Polish for 'fridge'" before ever having seen `lodówka`: with
+    the themed vocabulary nodes opening after N06, 52 of the 116 words a learner
+    met over ninety simulated days arrived that way, and 51 never through their
+    meaning item at all.
+
+    Every node is unlocked, so every pool competes and nothing but the rule keeps
+    a grammar item for an unmet noun out of the session.
+    """
+    from datetime import datetime as dt
+
+    from pl.models import NodeLexeme, NodeUnlock
+    from pl.schedule import LEXICAL
+
+    for node in db.scalars(select(Node)):
+        db.add(
+            NodeUnlock(
+                user_id=user.id,
+                node_id=node.id,
+                unlocked_at=dt.now(UTC).replace(tzinfo=None),
+            )
+        )
+    db.commit()
+
+    sense_by_form = _sense_by_form(db)
+    taught_words = set(
+        db.scalars(
+            select(Form.id)
+            .join(NodeLexeme, NodeLexeme.lexeme_id == Form.lexeme_id)
+            .join(Node, Node.id == NodeLexeme.node_id)
+            .where(Node.type == "vocabulary")
+        )
+    )
+
+    checked = 0
+    for _ in range(12):
+        met = {ref for ref in _started_referents(db, user.id) if ref[0] == LEXICAL}
+        picked, _ = build_session(db, user.id, SETTINGS, limit=20)
+        for item in picked:
+            node = db.get(Node, item.node_id)
+            word = (LEXICAL, sense_by_form.get(item.target_form_id))
+            if node.type == "vocabulary":
+                met.add(word)
+            elif item.target_form_id in taught_words:
+                checked += 1
+                assert word in met, (
+                    f"{item.prompt!r} ({node.key}) introduces "
+                    f"{item.expected_answer!r} before its meaning item"
+                )
+            schedule_cards(db, user, item)
+        db.commit()
+        _defer_everything(db)
+
+    assert checked, "no grammar item for a taught noun was served; nothing was tested"
+
+
+def test_a_stratum_only_downstream_words_populate_is_refused(db):
+    """The word-first rule has a deadlock in it, and the build must refuse it.
+
+    A stratum counts toward its node's gate from the moment it exists. If every
+    noun populating it is taught by a vocabulary node that opens only *after*
+    that grammar node is mastered, its items wait for a meaning card that waits
+    for the node that waits for them. `Verified:` nine masculine personal nouns
+    in V02 gave N05 five such strata, N05 was never mastered on any seed, and a
+    flawless learner's streak fell from 60 days to 36.
+    """
+    from pl.models import NodeLexeme
+
+    n05 = db.scalar(select(Node).where(Node.key == "N05"))
+    stratum = db.scalar(select(Pattern).where(Pattern.node_id == n05.id))
+    v02 = db.scalar(select(Node).where(Node.key == "V02"))
+    downstream_word = db.scalar(
+        select(models.Lexeme.lemma)
+        .join(NodeLexeme, NodeLexeme.lexeme_id == models.Lexeme.id)
+        .where(NodeLexeme.node_id == v02.id)
+    )
+
+    with pytest.raises(AssertionError, match="unreachable"):
+        frames.assert_every_stratum_is_reachable(
+            db, {(stratum.rule_key, stratum.paradigm_class): {downstream_word}}
+        )
+
+
+def test_introduction_opens_a_new_stratum_before_another_form_of_an_old_one(db, user):
+    """A node is mastered through its pattern cards, not its forms.
+
+    Another noun in a stratum the learner has already started costs a card from
+    the daily ten and moves no gate; an item in a stratum they have not met
+    creates the pattern card the gate counts. With the vocabulary trebled, the
+    second kind was being crowded out by the first: measured to 150 days, N08
+    stopped opening at all at 85% accuracy, and a flawless learner's N09 and N10
+    went with it.
+    """
+    from datetime import datetime as dt
+
+    from pl.models import NodeUnlock
+    from pl.schedule import PATTERN
+
+    # Only the node under test, so the daily budget is not spread across fifteen
+    # pools and this test measures the ordering rather than the round-robin.
+    node = db.scalar(select(Node).where(Node.key == "N04"))
+    db.add(
+        NodeUnlock(
+            user_id=user.id,
+            node_id=node.id,
+            unlocked_at=dt.now(UTC).replace(tzinfo=None),
+        )
+    )
+    db.commit()
+    items = list(db.scalars(select(Item).where(Item.node_id == node.id)))
+    strata = {i.pattern_id for i in items if i.pattern_id is not None}
+    assert len(strata) >= 2, "this node cannot show the preference"
+    started_pattern = sorted(strata)[0]
+
+    # The learner has met every word this node inflects, or the word-first rule
+    # holds all of them back and nothing here is about ordering.
+    from pl.models import Sense
+    from pl.schedule import LEXICAL, card_for
+
+    for item in items:
+        if item.target_form_id is None:
+            continue
+        lexeme_id = db.get(Form, item.target_form_id).lexeme_id
+        sense = db.scalar(select(Sense.id).where(Sense.lexeme_id == lexeme_id))
+        if sense is not None:
+            card_for(db, user.id, LEXICAL, sense)
+    db.commit()
+    seed_item = next(i for i in items if i.pattern_id == started_pattern)
+    schedule_cards(db, user, seed_item)
+    db.commit()
+    # A card created now is due now, and the debt segment would serve it before
+    # anything is introduced — this is about what introduction chooses.
+    _defer_everything(db)
+
+    picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+    introduced = picked[len(picked) - stats["introduced_items"]:]
+    from_node = [i for i in introduced if i.node_id == node.id and i.pattern_id]
+    assert from_node, "nothing was introduced from the node under test"
+    first = from_node[0]
+    assert first.pattern_id != started_pattern, (
+        f"introduction offered another form of the stratum already started "
+        f"({first.prompt!r} / {first.expected_answer!r}) while "
+        f"{len(strata) - 1} unstarted strata waited"
+    )
+    assert PATTERN
+
+
+def _back_date_attempts(db, days: int):
+    """Move the answer history back, leaving every card's schedule where it is.
+
+    The cooldown is measured from when a card was last advanced, so a test for it
+    must move time without also making the card due.
+    """
+    for attempt in db.scalars(select(Attempt)):
+        attempt.created_at -= timedelta(days=days)
+    db.commit()
+
+
+def test_an_early_answer_advances_the_schedule_at_most_every_three_days(db, user):
+    """A card met daily never earns a long interval, and mastery reads intervals.
+
+    Any item scores the cards it touches, due or not, and a wide stratum's pattern
+    card is touched almost every day: at 105 items it was rated 30 times in 36
+    days, and at 85% accuracy its stability stalled at 3.2 against the seven-day
+    mastery bar while a quiet card in the same node reached 21.5. One learner in
+    twelve never finished the accusative because of it.
+    """
+    from pl import schedule
+    from pl.schedule import EARLY_REVIEW_COOLDOWN_DAYS, MORPH
+
+    item = db.scalar(
+        select(Item)
+        .join(Node, Node.id == Item.node_id)
+        .where(Node.type == "grammar", Item.target_form_id.is_not(None))
+    )
+    card = schedule.cards_for_item(db, user.id, item)[MORPH]
+    card.due_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30)
+    db.commit()
+
+    answer(db, user, item)
+    assert card.reps == 1, "the first answer should have advanced the schedule"
+
+    _back_date_attempts(db, 1)
+    answer(db, user, item)
+    assert card.reps == 1, (
+        "a card answered again the next day, while not due, advanced anyway — "
+        "this is what keeps a busy card's interval at zero"
+    )
+
+    _back_date_attempts(db, EARLY_REVIEW_COOLDOWN_DAYS)
+    answer(db, user, item)
+    assert card.reps == 2, "after the cooldown an early answer counts again"
+
+    # A due card is always scored, cooldown or not.
+    _back_date_attempts(db, 1)
+    card.due_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+    db.commit()
+    answer(db, user, item)
+    assert card.reps == 3, "a card that is actually due must always be scored"
+
+
+def _gloss_for(db, lemma: str, prompt: str) -> str | None:
+    for item in db.scalars(select(Item).where(Item.prompt == prompt)):
+        if item.target_form_id is None:
+            continue
+        if db.get(Form, item.target_form_id).lexeme_id == _lexeme_id(db, lemma):
+            return item.gloss
+    return None
+
+
+def _lexeme_id(db, lemma: str) -> int:
+    return db.scalar(select(models.Lexeme.id).where(models.Lexeme.lemma == lemma))
+
+
+def test_a_place_takes_its_own_preposition_for_direction_too(db):
+    """`Idę na targ`, never `Idę do targu` — and the reverse for `w` places.
+
+    Which preposition a place takes is lexical, and it governs direction as well
+    as location: the course built `Idę do poczty` and `Idę do targu`, which a
+    Polish speaker does not say. One field on the lexeme decides both.
+    """
+    for lemma in ("targ", "poczta", "balkon", "uniwersytet", "wieś"):
+        assert _gloss_for(db, lemma, "Idę na ___.") is not None, (
+            f"{lemma} takes na for place but has no direction item"
+        )
+        assert _gloss_for(db, lemma, "Idę do ___.") is None, (
+            f"{lemma} takes na for place, so do + genitive is the wrong direction"
+        )
+    for lemma in ("sklep", "apteka", "kino"):
+        assert _gloss_for(db, lemma, "Idę do ___.") is not None
+        assert _gloss_for(db, lemma, "Idę na ___.") is None
+
+
+def test_the_english_gloss_carries_the_article_its_noun_needs(db):
+    """Polish has no articles, so every one the course prints is authored.
+
+    Without the distinction the frames printed "I like cat" for every count noun
+    and "I have the coffee" for every mass one.
+    """
+    assert _gloss_for(db, "kot:Sm2", "Lubię ___.") == "I like a cat."
+    assert _gloss_for(db, "kawa", "Lubię ___.") == "I like coffee."
+    assert _gloss_for(db, "jabłko", "Lubię ___.") == "I like an apple."
+    assert _gloss_for(db, "kot:Sm2", "Widzę ___.") == "I see the cat."
+    assert _gloss_for(db, "kawa", "Nie mam ___.") == "I do not have coffee."
+    assert _gloss_for(db, "kot:Sm2", "Nie mam ___.") == "I do not have a cat."
+
+
+def test_a_relation_is_mine_where_english_needs_a_possessive(db):
+    """"I like the brother" is not English, and Polish offers no possessive.
+
+    `Lubię brata` carries none, so the English gloss supplies one until the
+    course teaches `mój` — everywhere except where English counts relations
+    instead: "I have a brother", "I do not have a brother".
+    """
+    assert _gloss_for(db, "brat", "Lubię ___.") == "I like my brother."
+    assert _gloss_for(db, "brat", "To jest ___.") == "This is my brother."
+    assert _gloss_for(db, "brat", "To jest dom ___.") == "This is my brother's house."
+    assert _gloss_for(db, "brat", "Mam ___.") == "I have a brother."
+    assert _gloss_for(db, "brat", "Nie mam ___.") == "I do not have a brother."
+    # Not everyone is a relation.
+    assert _gloss_for(db, "lekarz", "Lubię ___.") == "I like a doctor (m)."
+
+
+def test_a_frame_can_be_kept_off_a_word_it_would_mislead_on(db):
+    """`Mam dziewczynę` is heard as "I have a girlfriend"."""
+    for lemma in ("chłopak", "dziewczyna"):
+        for prompt in ("Mam ___.", "Nie mam ___."):
+            assert _gloss_for(db, lemma, prompt) is None, (
+                f"{lemma} still has {prompt!r}, which the gloss cannot say honestly"
+            )
+        # Still taught everywhere the reading is plain.
+        assert _gloss_for(db, lemma, "Widzę ___.") is not None
+
+
+def _reload_with(monkeypatch, lexemes):
+    """Re-read the curriculum with an edited lexeme list, the way an author would."""
+    real = ingest._load
+
+    def fake(name):
+        return lexemes if name == "lexemes.yaml" else real(name)
+
+    monkeypatch.setattr(ingest, "_load", fake)
+
+
+def test_moving_a_word_between_vocabulary_nodes_reaches_an_existing_database(
+    db, monkeypatch
+):
+    """An edit to `vocabulary_node` must survive a rebuild, not half of one.
+
+    `ingest_nodes` only ever added `NodeLexeme` rows and an item is identified
+    without its node, so a moved word kept its old membership, gained the new
+    one, and left its meaning item where it was. Nothing reported it. Move
+    enough words into V01 that way and its gate counts senses whose only meaning
+    item sits behind N06 — V01 is the root, so the course stops at its first
+    node with every row well-formed.
+    """
+    from pl.models import NodeLexeme
+
+    lexemes = [dict(e) for e in ingest._load("lexemes.yaml")]
+    moved = next(e for e in lexemes if e.get("vocabulary_node") == "V02")
+    del moved["vocabulary_node"]
+    _reload_with(monkeypatch, lexemes)
+
+    ingest.ingest_all(db)
+    frames.build(db)
+
+    lexeme = db.scalar(select(models.Lexeme).where(models.Lexeme.lemma == moved["lemma"]))
+    owners = sorted(
+        key
+        for (key,) in db.execute(
+            select(Node.key)
+            .join(NodeLexeme, NodeLexeme.node_id == Node.id)
+            .where(NodeLexeme.lexeme_id == lexeme.id, Node.type == "vocabulary")
+        )
+    )
+    assert owners == ["V01"], f"{moved['lemma']} is owned by {owners}"
+
+    meaning = [
+        db.get(Node, i.node_id).key
+        for i in db.scalars(select(Item).where(Item.pattern_id.is_(None)))
+        if i.target_form_id is not None
+        and db.get(Form, i.target_form_id).lexeme_id == lexeme.id
+        and i.prompt.startswith("Which word means")
+    ]
+    assert meaning == ["V01"], f"its meaning item is under {meaning}"
+
+
+def test_every_gating_word_can_be_met_under_the_node_that_gates_on_it(db):
+    """A vocabulary node's gate and its items must name the same words.
+
+    A sense counted by a node the learner cannot meet it through is a gate with
+    no key: only a meaning item creates a lexical card, and introduction offers
+    items from the node they belong to.
+    """
+    from pl.models import NodeLexeme, Sense
+
+    for node in db.scalars(select(Node).where(Node.type == "vocabulary")):
+        gating = {
+            sense_id
+            for (sense_id,) in db.execute(
+                select(Sense.id)
+                .join(NodeLexeme, NodeLexeme.lexeme_id == Sense.lexeme_id)
+                .where(NodeLexeme.node_id == node.id)
+            )
+        }
+        met = set()
+        for item in db.scalars(select(Item).where(Item.node_id == node.id)):
+            if item.target_form_id is None:
+                continue
+            lexeme_id = db.get(Form, item.target_form_id).lexeme_id
+            sense = db.scalar(select(Sense.id).where(Sense.lexeme_id == lexeme_id))
+            met.add(sense)
+        assert gating <= met, (
+            f"{node.key} gates on {len(gating - met)} word(s) it offers no item for"
+        )
+
+
+def test_the_build_itself_refuses_an_unreachable_stratum(db, monkeypatch):
+    """The guard has to be wired into the build, not merely importable.
+
+    Deleting the call left the suite green, including with the nine masculine
+    personal nouns whose strata under N05 nothing can reach — the deadlock the
+    guard exists for.
+    """
+    lexemes = [dict(e) for e in ingest._load("lexemes.yaml")]
+    lexemes.append(
+        {"lemma": "ojciec", "gloss": "father", "theme": "people", "vocabulary_node": "V02"}
+    )
+    _reload_with(monkeypatch, lexemes)
+
+    ingest.ingest_all(db)
+    with pytest.raises(AssertionError, match="unreachable"):
+        frames.build(db)
+
+
 def schedule_cards(db, user, item):
     from pl import schedule
 
@@ -861,7 +1240,13 @@ def test_every_exercise_type_built_is_a_type_the_learner_can_meet(db, user, monk
 
     rng = random.Random(5)
     met: set[str] = set()
-    for _ in range(40):
+    # Ninety days, because the curriculum is 2.7 times the size it was at forty
+    # and dictation is reachable only through the debt queue — as a second
+    # exercise for a form the learner already holds. Every other type is offered
+    # by day eight; dictation lands on day 84 under this suite's FSRS fuzz seed,
+    # and on day 58 or 64 under others, so the window carries headroom for a
+    # figure that moves with the fuzz as well as with the content.
+    for _ in range(90):
         picked, _ = build_session(db, user.id, SETTINGS, limit=20)
         for item in picked:
             met.add(item.exercise_type)
@@ -871,7 +1256,7 @@ def test_every_exercise_type_built_is_a_type_the_learner_can_meet(db, user, monk
 
     built = set(db.scalars(select(Item.exercise_type).distinct()))
     assert built - met == set(), (
-        f"built but never offered in forty days: {sorted(built - met)}"
+        f"built but never offered in ninety days: {sorted(built - met)}"
     )
 
 
