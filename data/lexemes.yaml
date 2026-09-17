@@ -213,6 +213,8 @@
   theme: venue
 - lemma: uniwersytet
   gloss: university
+  # "a university": the article follows the sound, and u- here is a consonant.
+  indefinite_article: a
   theme: venue
   # "na uniwersytecie", never "w uniwersytecie". Which preposition a place takes
   # is lexical — no rule derives it from the noun, so it is stored on the noun.

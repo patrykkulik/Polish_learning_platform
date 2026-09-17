@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polish — progress</title>
+<title>Polish — grammar</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
 
@@ -44,19 +44,6 @@
 
   section { display: flex; flex-direction: column; gap: .9rem; }
 
-  /* Headline figures. Four numbers that answer different questions, so they are
-     shown side by side rather than folded into one score. */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .75rem; }
-  .tile {
-    background: var(--raised); border: 1px solid var(--line);
-    border-radius: 10px; padding: .9rem 1rem;
-  }
-  .tile .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 650; }
-  .tile .v {
-    font-family: ui-serif, Georgia, serif; font-size: 1.7rem;
-    font-variant-numeric: tabular-nums; margin-top: .2rem; line-height: 1.1;
-  }
-  .tile .n { font-size: .78rem; color: var(--muted); }
 
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
   thead th {
@@ -64,17 +51,9 @@
     letter-spacing: .09em; color: var(--faint); font-weight: 650;
     padding: 0 .6rem .5rem 0; border-bottom: 1px solid var(--line);
   }
-  thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
   tbody td { padding: .6rem .6rem .6rem 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  tbody tr.locked { opacity: .5; }
-  .title { font-weight: 600; }
   .key { font-size: .74rem; color: var(--faint); font-variant-numeric: tabular-nums; }
 
-  /* The decaying bar. Deliberately not the unlock gate's figure — see
-     criterion 14: the gate latches, this does not. */
-  .meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 5rem; }
-  .meter i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
-  .meter i.done { background: var(--good); }
 
   .pill {
     font-size: .68rem; padding: .12rem .5rem; border-radius: 999px;
@@ -86,26 +65,7 @@
      the learner is, mastered is something they did. */
   .pill.held { background: var(--good); border-color: var(--good); color: var(--raised); font-weight: 650; }
 
-  /* A generous column gap: three meters at the same height read as one stripe
-     across the page when they sit closer than this. */
-  .ms-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.1rem 2.25rem; }
-  .ms { display: flex; flex-direction: column; gap: .35rem; }
-  .ms-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
-  .ms-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 650; }
-  .ms-target { font-size: .85rem; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 650; }
-  .ms-note { font-size: .74rem; color: var(--faint); }
 
-  .curve { display: flex; align-items: flex-end; gap: 3px; height: 5.5rem; }
-  /* Each column carries its own track, so a bad day reads as a bad day rather
-     than as a chart that failed to draw. Without it a 9% bar is three pixels of
-     colour floating in white space. */
-  .curve .day {
-    flex: 1; min-width: 4px; height: 100%; border-radius: 3px;
-    background: var(--line); display: flex; flex-direction: column; justify-content: flex-end;
-  }
-  .curve .day i { display: block; background: var(--accent); border-radius: 3px; min-height: 2px; }
-  .curve .day i.strong { background: var(--good); }
-  .axis { display: flex; justify-content: space-between; font-size: .72rem; color: var(--faint); }
 
   .empty {
     border: 1px dashed var(--line); border-radius: 10px;
@@ -113,15 +73,24 @@
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
+
+<style>
+  .concept { background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; }
+  .concept h3 { margin: 0; font-family: ui-serif, Georgia, serif; font-size: 1.05rem; font-weight: 600; }
+  .concept p { margin: .35rem 0 0; font-size: .9rem; color: var(--muted); }
+  .concept.shut h3 { color: var(--faint); }
+  .concept a { color: inherit; text-decoration: none; }
+  .concept a:hover h3 { color: var(--accent); }
+  .row { display: flex; align-items: baseline; gap: .6rem; }
+  .row .pill { margin-left: auto; }
+
+</style>
 </head>
 <body>
 <header>
   <div class="bar">
     <div class="brand">polski<span>.</span></div>
-    <div class="stat">streak <b id="s-streak">–</b></div>
-    <div class="stat">freezes <b id="s-freezes">–</b></div>
-    <div class="stat">due <b id="s-debt">–</b></div>
-    <a class="stat link" href="/grammar">grammar</a>
+    <a class="stat link" href="/progress">progress</a>
     <a class="stat link" href="/">review</a>
   </div>
 </header>
@@ -131,6 +100,6 @@
 </main>
 
 <script src="/static/common.js"></script>
-  <script src="/static/progress.js"></script>
+  <script src="/static/grammar.js"></script>
 </body>
 </html>

@@ -42,7 +42,7 @@ from pl.models import (
     Review,
     Sense,
 )
-from pl import audio, schedule
+from pl import audio, concepts, schedule
 from pl.domain import AUDIBLE
 from pl.schedule import LEXICAL, MORPH, PATTERN, Rating, populations_for
 
@@ -666,6 +666,11 @@ def build_session(
     started = _started_referents(db, user_id)
     sense_by_form = _sense_by_form(db)
     taught_words = _forms_of_taught_words(db)
+    # A concept is taught before it is drilled. A node whose lesson is unread
+    # introduces nothing new; its due cards still come back through the debt
+    # segment, which never consults this — losing new material is a gate, and
+    # losing work already started would be a punishment.
+    gated = concepts.gated_node_ids(db, user_id)
 
     # 1 — debt. A card whose schedule has already advanced today is not debt: it
     # has had its turn, and under `ONE_REVIEW_PER_DAY` answering it again cannot
@@ -723,7 +728,7 @@ def build_session(
         node_items = [
             (node, list(db.scalars(select(Item).where(Item.node_id == node.id)).all()))
             for node in db.scalars(select(Node))
-            if is_unlocked(db, user_id, node)
+            if is_unlocked(db, user_id, node) and node.id not in gated
         ]
         # Start the round-robin somewhere new each time. Round-robin alone is not
         # enough to be fair: every round begins at the first node, and a budget of

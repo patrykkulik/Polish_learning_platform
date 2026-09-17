@@ -1501,6 +1501,19 @@ to settle an argument — it will confidently settle it the wrong way.**
   3% of conversational B1. See §Content, and §"Vocabulary grows in themed nodes" for why adding them
   was not only volume work.
 
+**The teaching surface**
+
+- ~~The course teaches by correction alone.~~ **Built at this revision, and designed separately:**
+  [`teaching-surface.md`](teaching-surface.md). Each node's `explanation_md` reached the learner as one
+  sentence, once, at the unlock moment — the rest of it, and every declension table a Polish classroom
+  would draw, existed nowhere. A **concept** is now the teaching unit (not a node: the genitive is
+  three nodes and one idea), its prose is authored in `data/concepts.yaml`, and its tables are read out
+  of the stored paradigm, so a table cannot be wrong unless SGJP is. The lesson opens the session that
+  unlocks it and must be acknowledged before that node introduces anything; `/grammar` keeps it
+  readable afterwards. `Verified:` over twelve seeds × ninety days the gate costs nothing — nodes,
+  items and streak days are identical with and without it, because a concept is read on the day its
+  node opens.
+
 **Unimplemented, not merely defective**
 
 - Criterion 18's promotion queue. `item_variant` ships as dead schema.

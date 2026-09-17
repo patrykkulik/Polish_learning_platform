@@ -13,7 +13,7 @@ import warnings
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
@@ -65,10 +65,25 @@ def _one(Session, exercise_type: str) -> Item:
 # ------------------------------------------------------------ criterion 17
 
 
+def _taught_session(http, limit: int = 20) -> dict:
+    """A session with the teaching out of the way.
+
+    A concept is taught before it is drilled, so a new learner's first session
+    carries a lesson and no items at all. A test about what the *items* contain
+    has to read it first, or it asserts over an empty list and passes for the
+    wrong reason.
+    """
+    payload = http.get(f"/api/session?limit={limit}").json()
+    while payload.get("lesson"):
+        http.post(f"/api/concepts/{payload['lesson']['key']}/read")
+        payload = http.get(f"/api/session?limit={limit}").json()
+    return payload
+
+
 def test_a_session_never_carries_an_answer(client):
     """The payload the learner receives must not contain what they must produce."""
     http, Session = client
-    payload = http.get("/api/session?limit=20").json()
+    payload = _taught_session(http)
     assert payload["items"], "an empty session proves nothing"
 
     with Session() as db:
@@ -119,10 +134,77 @@ def test_no_exercise_type_carries_its_answer(client):
 
 def test_no_item_is_labelled_with_which_option_is_right(client):
     http, _ = client
-    for item in http.get("/api/session?limit=20").json()["items"]:
+    items = _taught_session(http)["items"]
+    assert items, "an empty session would pass this vacuously"
+    for item in items:
         assert set(item) == {
             "id", "exercise_type", "prompt", "gloss", "options", "has_audio", "node"
         }
+
+
+# ------------------------------------------------------------- the teaching
+
+
+def test_a_session_carries_one_lesson_until_it_is_acknowledged(client):
+    """A concept is taught before it is drilled, and once.
+
+    The lesson is the session's first step; acknowledging it is what lets the
+    node introduce. Reading writes no card, review or attempt — the daily goal
+    counts items answered, and a goal a page of prose can satisfy is not a goal.
+    """
+    from pl.models import Attempt, Card, Review
+
+    http, Session = client
+    lesson = http.get("/api/session?limit=20").json()["lesson"]
+    assert lesson and lesson["key"] == "VOCAB_GENDER", (
+        "a new learner's first session should open with the first concept"
+    )
+    assert lesson["sections"] and lesson["tables"], "a lesson needs its content"
+
+    assert http.post(f"/api/concepts/{lesson['key']}/read").json()["read"] is True
+    assert http.get("/api/session?limit=20").json()["lesson"] is None
+
+    with Session() as db:
+        for table in (Attempt, Review, Card):
+            assert db.scalar(select(func.count()).select_from(table)) == 0, (
+                f"reading a lesson wrote a {table.__name__} row"
+            )
+
+
+def test_a_concept_the_learner_has_not_reached_carries_no_prose(client):
+    """Criterion 7. A page that withholds what its own API hands out is not a
+    gate, so the locked state is decided here rather than in the browser."""
+    http, _ = client
+    locked = http.get("/api/concepts/GENITIVE").json()
+    assert locked["open"] is False
+    assert "sections" not in locked and "tables" not in locked
+    assert http.post("/api/concepts/GENITIVE/read").status_code == 403
+
+    listed = {c["key"]: c for c in http.get("/api/concepts").json()["concepts"]}
+    assert listed["GENITIVE"]["summary"] == "", "the index leaked a locked summary"
+    assert listed["VOCAB_GENDER"]["summary"], "an open concept should say what it is"
+
+
+def test_an_unknown_concept_is_a_404(client):
+    http, _ = client
+    assert http.get("/api/concepts/NOPE").status_code == 404
+    assert http.post("/api/concepts/NOPE/read").status_code == 404
+
+
+def test_the_grammar_pages_render(client):
+    http, _ = client
+    assert http.get("/grammar").status_code == 200
+    assert http.get("/grammar/CASES").status_code == 200
+
+
+def test_the_grammar_is_reachable_from_every_page(client):
+    """P01-1. The lesson step links to the grammar, and it is never shown again
+    once acknowledged — so without a header link a concept's page needed a typed
+    URL from the day after it was taught, which is the defect the teaching
+    surface was designed to remove."""
+    http, _ = client
+    for page in ("/", "/progress"):
+        assert 'href="/grammar"' in http.get(page).text, f"{page} has no way to the grammar"
 
 
 # ---------------------------------------------------------------- audio
@@ -405,6 +487,42 @@ def test_a_second_item_of_the_same_rule_says_it_counted(client):
         "the second answer moved no rule card and did not say why — the learner "
         "sees it as 'untouched' and reads that as not counting"
     )
+
+
+def test_a_card_resting_between_reviews_is_not_reported_as_counted_today(client):
+    """P02-1. The cooldown is a third reason an answer moves no card.
+
+    A card that is not due advances at most every three days, so answering it
+    again two days later moves nothing — and nothing was recorded today, so
+    "counted earlier today" is false. Remediation serves exactly these cards, so
+    the wrong label was the common case, not the edge.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from pl.models import Attempt, Item
+
+    http, Session = client
+    with Session() as db:
+        item = db.scalar(
+            select(Item).where(Item.exercise_type == "cloze", Item.pattern_id.isnot(None))
+        )
+        item_id, answer = item.id, item.expected_answer
+
+    first = http.post("/api/submit", json={"item_id": item_id, "answer": answer}).json()
+    assert "pattern" in first["scored"], "the first answer should move the rule card"
+
+    # Two days pass; the card is not yet due, and was last moved within three.
+    with Session() as db:
+        for attempt in db.scalars(select(Attempt)):
+            attempt.created_at -= timedelta(days=2)
+        db.commit()
+
+    again = http.post("/api/submit", json={"item_id": item_id, "answer": answer}).json()
+    assert "pattern" not in again["scored"]
+    assert "pattern" not in again["counted_earlier"], (
+        "nothing was recorded today, so this must not say it counted today"
+    )
+    assert "pattern" in again["cooled_down"]
 
 
 def test_the_retention_curve_counts_hard_as_a_recall(client):

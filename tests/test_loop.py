@@ -13,10 +13,23 @@ import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
-from pl import models, schedule
+from pl import concepts, models, schedule
+from pl import db as database
 from pl.content import frames, ingest
 from pl.domain import ErrorClass
-from pl.models import Attempt, Card, Form, Item, Lexeme, Node, NodeUnlock, Pattern
+from pl.models import (
+    AppUser,
+    Attempt,
+    Card,
+    ConceptRead,
+    Form,
+    Item,
+    ItemSlot,
+    Lexeme,
+    Node,
+    NodeUnlock,
+    Pattern,
+)
 from pl.schedule import MORPH, PATTERN, ROUTING
 from pl.session import (
     DAILY_NEW_CAP,
@@ -65,6 +78,29 @@ def _item(db, lemma: str, fragment: str) -> Item:
 
 
 # ------------------------------------------------------------------ content
+
+
+def test_a_word_naming_a_node_that_is_not_a_vocabulary_node_is_refused(monkeypatch):
+    """`vocabulary_node` is hand-edited, and a typo must say which word it was.
+
+    A key that does not exist failed with a bare `KeyError`; a real *grammar*
+    node failed silently in four places at once — the word owned by no
+    vocabulary node, its meaning item scoring grammar cards, the word-first rule
+    no longer applying to it, and the reachability guard unable to see it.
+    """
+    real = ingest._load
+
+    def edited(name):
+        data = real(name)
+        if name != "lexemes.yaml":
+            return data
+        data = [dict(e) for e in data]
+        data[0]["vocabulary_node"] = "N03"
+        return data
+
+    monkeypatch.setattr(ingest, "_load", edited)
+    with pytest.raises(AssertionError, match=r"kawa.*N03"):
+        ingest.lexeme_vocabulary_nodes()
 
 
 def test_content_build_produces_enough_items(db):
@@ -579,3 +615,183 @@ def test_a_column_added_to_a_model_reaches_an_existing_database(tmp_path):
     finally:
         database.engine = original
         engine.dispose()
+
+# ------------------------------------------------------------ the build itself
+# `python -m pl.content.ingest` is the schema step, and since the teaching surface
+# it is also where concepts are validated, a learner mid-course is reconciled, and
+# a stored default goal is brought forward. Each of those was tested by calling
+# its function directly — and deleting the *call* from the build left the suite
+# green, the gap `test_the_build_itself_refuses_an_unreachable_stratum` was
+# written to close for the reachability guard. These drive `main()`.
+
+
+@pytest.fixture
+def built(tmp_path, monkeypatch):
+    """A real database file, built by `main()`, and a session factory onto it."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'build.db'}", future=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    monkeypatch.setattr(database, "engine", engine)
+    monkeypatch.setattr(database, "SessionLocal", factory)
+    ingest.main([])
+    yield factory
+    engine.dispose()
+
+
+def _learner(factory) -> AppUser:
+    with factory() as db:
+        return db.scalar(select(AppUser))
+
+
+def _forget_the_build_ran(factory, *keys: str) -> None:
+    """What a database from before this change looks like: no stamps."""
+    with factory() as db:
+        user = db.scalar(select(AppUser))
+        settings = dict(user.settings_json)
+        for key in keys:
+            settings.pop(key, None)
+        user.settings_json = settings
+        db.commit()
+
+
+# ------------------------------------------------------------ reconciliation
+
+
+def test_the_build_reconciles_a_learner_who_was_mid_course(built):
+    """Acceptance criterion 8, through the build rather than the function."""
+    _forget_the_build_ran(built, "concepts_reconciled_at")
+    with built() as db:
+        user = db.scalar(select(AppUser))
+        for key in ("N01", "N03"):
+            node = db.scalar(select(Node).where(Node.key == key))
+            db.add(
+                NodeUnlock(
+                    user_id=user.id,
+                    node_id=node.id,
+                    unlocked_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+        db.commit()
+
+    ingest.main([])
+
+    with built() as db:
+        read = concepts.read_keys(db, _learner(built).id)
+    assert {"VOCAB_GENDER", "CASES", "ACCUSATIVE"} <= read, (
+        "the build did not reconcile — a learner mid-course would be handed "
+        "lessons for material they have been answering for weeks"
+    )
+
+
+def test_the_build_refuses_a_concept_the_graph_cannot_teach(built, monkeypatch):
+    real = concepts._load()
+    monkeypatch.setattr(
+        concepts,
+        "_load",
+        lambda: {**real, "concepts": [*real["concepts"], {"key": "GHOST", "title": "x", "introduced_by": "N99"}]},
+    )
+    with pytest.raises(AssertionError, match="graph does not contain"):
+        ingest.main([])
+
+
+# ------------------------------------------------------------- the daily goal
+
+
+def test_the_build_brings_a_stored_default_goal_forward(built):
+    """P01-5. A default changed in code never reaches a row that stored the old one.
+
+    Every database built before the goal became `DAILY_NEW_CAP` holds an explicit
+    `daily_goal_items: 20`, and `record_activity` falls back to the new default
+    only for an absent key — so the measured streak improvement was not
+    delivered to the one learner the measurements were for.
+    """
+    _forget_the_build_ran(built, "goal_migrated_at")
+    with built() as db:
+        user = db.scalar(select(AppUser))
+        user.settings_json = {**user.settings_json, "daily_goal_items": 20}
+        db.commit()
+
+    ingest.main([])
+
+    settings = _learner(built).settings_json
+    assert settings["daily_goal_items"] == DAILY_NEW_CAP
+    assert settings.get("goal_migrated_at")
+
+
+def test_a_goal_the_learner_chose_is_left_alone(built):
+    """Only the old *default* moves. A learner who set 15 meant 15."""
+    _forget_the_build_ran(built, "goal_migrated_at")
+    with built() as db:
+        user = db.scalar(select(AppUser))
+        user.settings_json = {**user.settings_json, "daily_goal_items": 15}
+        db.commit()
+
+    ingest.main([])
+    assert _learner(built).settings_json["daily_goal_items"] == 15
+
+
+def test_a_goal_of_twenty_chosen_after_the_change_survives_a_rebuild(built):
+    """The stamp, not the value, says the migration has happened."""
+    with built() as db:
+        user = db.scalar(select(AppUser))
+        user.settings_json = {**user.settings_json, "daily_goal_items": 20}
+        db.commit()
+
+    ingest.main([])
+    assert _learner(built).settings_json["daily_goal_items"] == 20
+
+
+# --------------------------------------------------------------- stale items
+
+
+def _stale_item(factory, answered: bool) -> int:
+    """An item no current frame produces — what a corrected frame leaves behind."""
+    with factory() as db:
+        template = db.scalar(select(Item).where(Item.exercise_type == "cloze"))
+        stale = Item(
+            node_id=template.node_id,
+            pattern_id=template.pattern_id,
+            exercise_type="cloze",
+            prompt="Idę do ___.",
+            gloss="I am going to the post office.",
+            expected_answer="poczty-stale" + ("-answered" if answered else ""),
+            target_form_id=template.target_form_id,
+            source="template",
+        )
+        db.add(stale)
+        db.flush()
+        db.add(ItemSlot(item_id=stale.id, slot_index=0, expected_surface="poczty"))
+        if answered:
+            db.add(
+                Attempt(
+                    user_id=db.scalar(select(AppUser.id)),
+                    item_id=stale.id,
+                    submitted="poczty",
+                    created_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+        db.commit()
+        return stale.id
+
+
+def test_stale_items_are_reported_and_kept_by_default(built, capsys):
+    stale = _stale_item(built, answered=False)
+    ingest.main([])
+    assert "--drop-unanswered-stale" in capsys.readouterr().out
+    with built() as db:
+        assert db.get(Item, stale) is not None, "nothing may be deleted unasked"
+
+
+def test_the_flag_drops_stale_items_nobody_answered_and_keeps_the_rest(built):
+    """P01-6. A corrected sentence the owner flagged as wrong Polish went on being
+    served from every database built before the correction. Dropping the ones
+    with no attempts costs no history; the ones with attempts are the learner's
+    record and stay."""
+    untouched = _stale_item(built, answered=False)
+    answered = _stale_item(built, answered=True)
+
+    ingest.main(["--drop-unanswered-stale"])
+
+    with built() as db:
+        assert db.get(Item, untouched) is None
+        assert not db.scalars(select(ItemSlot).where(ItemSlot.item_id == untouched)).all()
+        assert db.get(Item, answered) is not None

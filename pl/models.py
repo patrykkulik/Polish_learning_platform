@@ -277,6 +277,22 @@ class NodeUnlock(Base):
     unlocked_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class ConceptRead(Base):
+    """A lesson the learner has been shown and acknowledged.
+
+    Keyed on the concept's string key rather than a row, because a concept is
+    content and lives in `data/concepts.yaml` — only the reading is state. A key
+    that disappears from the file leaves a reading behind, which the content
+    build reports rather than deletes.
+    """
+
+    __tablename__ = "concept_read"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), primary_key=True)
+    concept_key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Attempt(Base):
     """One submission. The parent of everything it caused."""
 

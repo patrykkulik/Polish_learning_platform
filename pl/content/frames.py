@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from pl import morph
 from pl import tags
 from pl.content.ingest import (
+    indefinite_articles,
     lexeme_locatives,
     lexeme_themes,
     lexeme_vocabulary_nodes,
@@ -103,7 +104,11 @@ ARTICLES = ("the", "a", "my")
 
 
 def english_noun(
-    frame: dict, gloss: str, is_mass: bool = False, is_relation: bool = False
+    frame: dict,
+    gloss: str,
+    is_mass: bool = False,
+    is_relation: bool = False,
+    indefinite: str | None = None,
 ) -> str:
     """The gloss with the article its frame and its noun call for."""
     article = frame.get("article")
@@ -127,6 +132,8 @@ def english_noun(
         return f"the {gloss}" if article == "the" else gloss
     if article == "the":
         return f"the {gloss}"
+    if indefinite is not None:
+        return f"{indefinite} {gloss}"
     return f"an {gloss}" if gloss[0].lower() in "aeiou" else f"a {gloss}"
 
 
@@ -316,6 +323,7 @@ def build_items(db: Session) -> list[Item]:
     locatives = lexeme_locatives()
     mass = mass_nouns()
     relations = relation_nouns()
+    indefinite = indefinite_articles()
     noms = _noun_nominatives(db)
     vocabulary_nodes = lexeme_vocabulary_nodes()
 
@@ -338,6 +346,7 @@ def build_items(db: Session) -> list[Item]:
                 glosses.get(lexeme.id, lexeme.lemma),
                 lexeme.lemma in mass,
                 lexeme.lemma in relations,
+                indefinite.get(lexeme.lemma),
             )
 
             # A frame may only make sense for part of the lexeme set. "Jestem

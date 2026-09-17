@@ -121,6 +121,22 @@ def user(db):
     return ingest.ensure_user(db)
 
 
+def read_every_concept(db, user):
+    """Take the lessons as read.
+
+    A concept is taught before it is drilled, so a node whose lesson is unread
+    introduces nothing — V01 included, from the first session. Every test below
+    that drives *introduction* is about what the composer chooses once teaching
+    has happened, so it says so here rather than measuring the gate by accident.
+    `test_an_unread_lesson_withholds_new_material_and_nothing_else` is the one
+    that leaves them unread on purpose.
+    """
+    from pl import concepts
+
+    for concept in concepts.all_concepts():
+        concepts.mark_read(db, user.id, concept["key"])
+
+
 @pytest.fixture
 def db():
     """A fresh, fully built curriculum with no learner history.
@@ -184,6 +200,7 @@ def test_answered_items_are_not_offered_again_as_new(db, user):
     handful of items every session and the rest of the node is never reached —
     which makes the node's mastery threshold unreachable by construction.
     """
+    read_every_concept(db, user)
     first, stats = build_session(db, user.id, SETTINGS, limit=10)
     assert stats["introduced"] > 0, "no new material was introduced at all"
 
@@ -211,6 +228,7 @@ def test_remediation_does_not_stop_at_its_first_overlap_with_debt(db, user):
     gate that segment 3 answers to neither of. That test passed for the wrong
     reason and went on passing when the stop-on-overlap defect was reintroduced.
     """
+    read_every_concept(db, user)
     from pl.schedule import cards_for_item
 
     for _ in range(3):
@@ -271,6 +289,7 @@ def test_a_diligent_learner_reaches_the_grammar(db, user):
     past the vocabulary node and reaches the morphology the course exists to
     teach.
     """
+    read_every_concept(db, user)
     # Generous, because the bound is not what is under test. Measured at ~25
     # simulated days today: debt suppresses new material most days, so a 44-word
     # vocabulary node takes far longer to clear than the daily cap implies. That
@@ -728,6 +747,8 @@ def test_introduction_does_not_stall_while_material_remains(db, user):
     """
     from datetime import datetime as dt
 
+    read_every_concept(db, user)
+
     from pl.models import NodeUnlock
     from pl.session import _item_referents, _sense_by_form, _started_referents
 
@@ -778,6 +799,73 @@ def test_introduction_does_not_stall_while_material_remains(db, user):
     )
 
 
+def test_an_unread_lesson_withholds_new_material_and_nothing_else(db, user):
+    """The gate, and the line it does not cross.
+
+    A concept is taught before it is drilled, so a node whose lesson is unread
+    introduces nothing. What it must not do is hold work the learner has already
+    started: a card they own keeps coming back through the debt queue, because
+    losing new material is a gate and losing your own history is a punishment.
+    """
+    from datetime import datetime as dt
+
+    from pl import concepts
+    from pl.models import NodeUnlock
+
+    node = db.scalar(select(Node).where(Node.key == "N03"))
+    db.add(
+        NodeUnlock(
+            user_id=user.id,
+            node_id=node.id,
+            unlocked_at=dt.now(UTC).replace(tzinfo=None),
+        )
+    )
+    db.commit()
+
+    # The learner has met the words this node inflects, or the word-first rule
+    # withholds its items whatever the lesson says, and the gate is untested.
+    from pl.models import Sense
+    from pl.schedule import LEXICAL, card_for
+
+    items = list(db.scalars(select(Item).where(Item.node_id == node.id)))
+    for candidate in items:
+        if candidate.target_form_id is None:
+            continue
+        lexeme_id = db.get(Form, candidate.target_form_id).lexeme_id
+        sense = db.scalar(select(Sense.id).where(Sense.lexeme_id == lexeme_id))
+        if sense is not None:
+            card_for(db, user.id, LEXICAL, sense)
+
+    # A card of that node, already met. Back-dated first so today's budget is
+    # whole, then made due — the debt segment is the half of this the gate must
+    # not touch.
+    item = items[0]
+    schedule_cards(db, user, item)
+    db.commit()
+    _defer_everything(db)
+    for card in db.scalars(select(Card).where(Card.user_id == user.id)):
+        if card.form_id == item.target_form_id or card.pattern_id == item.pattern_id:
+            card.due_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+    db.commit()
+
+    picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+    introduced = picked[len(picked) - stats["introduced_items"]:]
+    assert not [i for i in introduced if i.node_id == node.id], (
+        "the lesson is unread, so this node must introduce nothing"
+    )
+    assert item.id in {i.id for i in picked}, (
+        "a card the learner already holds was withheld — that is not the gate"
+    )
+
+    concepts.mark_read(db, user.id, concepts.concept_for_node("N03")["key"])
+    read_every_concept(db, user)
+    picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+    introduced = picked[len(picked) - stats["introduced_items"]:]
+    assert [i for i in introduced if i.node_id == node.id], (
+        "the lesson is read, so the node may now introduce"
+    )
+
+
 def test_grammar_introduces_a_noun_only_after_its_meaning(db, user):
     """A word is met as a word before it is met as an ending.
 
@@ -792,6 +880,8 @@ def test_grammar_introduces_a_noun_only_after_its_meaning(db, user):
     a grammar item for an unmet noun out of the session.
     """
     from datetime import datetime as dt
+
+    read_every_concept(db, user)
 
     from pl.models import NodeLexeme, NodeUnlock
     from pl.schedule import LEXICAL
@@ -876,6 +966,8 @@ def test_introduction_opens_a_new_stratum_before_another_form_of_an_old_one(db, 
     went with it.
     """
     from datetime import datetime as dt
+
+    read_every_concept(db, user)
 
     from pl.models import NodeUnlock
     from pl.schedule import PATTERN
@@ -1043,6 +1135,16 @@ def test_a_relation_is_mine_where_english_needs_a_possessive(db):
     assert _gloss_for(db, "brat", "Nie mam ___.") == "I do not have a brother."
     # Not everyone is a relation.
     assert _gloss_for(db, "lekarz", "Lubię ___.") == "I like a doctor (m)."
+
+
+def test_the_indefinite_article_follows_the_sound_not_the_letter(db):
+    """"an university" is what a rule reading the first letter writes.
+
+    English chooses `a` or `an` by sound, and `university` starts with a
+    consonant sound. A lexeme can say so, beside `mass:` and `relation:`.
+    """
+    assert _gloss_for(db, "uniwersytet", "To jest ___.") == "This is a university."
+    assert _gloss_for(db, "jabłko", "To jest ___.") == "This is an apple."
 
 
 def test_a_frame_can_be_kept_off_a_word_it_would_mislead_on(db):
@@ -1224,6 +1326,8 @@ def test_every_exercise_type_built_is_a_type_the_learner_can_meet(db, user, monk
     """
     from datetime import datetime as dt
 
+    read_every_concept(db, user)
+
     from pl import audio
     from pl.models import NodeUnlock
 
@@ -1296,6 +1400,8 @@ def test_remediation_does_not_starve_new_material(db, user):
     """
     from pl.session import weakest_node
 
+    read_every_concept(db, user)
+
     rng = random.Random(7)
     seen: set[int] = set()
     introduced_after_the_first_day = 0
@@ -1334,6 +1440,8 @@ def test_the_daily_cap_is_not_re_granted_by_asking_again(db, user):
     later anyway.
     """
     from pl.session import DAILY_NEW_CAP
+
+    read_every_concept(db, user)
 
     introduced = 0
     for _ in range(6):
@@ -1461,6 +1569,7 @@ def test_a_small_backlog_does_not_stop_the_curriculum_opening(db, user):
     `scripts/journey_sim.py` is for, and a test that took ninety days to fail
     would tell nobody which line broke it.
     """
+    read_every_concept(db, user)
     from pl.session import DEBT_TOLERANCE
 
     first, _ = build_session(db, user.id, SETTINGS, limit=20)

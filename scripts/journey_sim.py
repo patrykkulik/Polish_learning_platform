@@ -34,6 +34,7 @@ from collections import Counter
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
+from pl import concepts as teaching
 from pl import models
 from pl import schedule as _schedule
 from pl import session as _session
@@ -158,6 +159,16 @@ def simulate(
 
     for day in range(1, days + 1):
         start_day(day)
+
+        # The learner reads the lessons they are offered, then the session is
+        # composed — which is what the review page does, since acknowledging
+        # re-fetches and the next unread lesson follows until none remain. An
+        # instrument that never reads one would report a course that had stopped
+        # teaching: a gated node introduces nothing, so every pacing figure below
+        # would measure the gate rather than the curriculum. Reading only one a
+        # day would diverge from the product the first time two open together.
+        while (lesson := teaching.lesson_for(db, user.id)) is not None:
+            teaching.mark_read(db, user.id, lesson["key"])
 
         picked, stats = build_session(db, user.id, settings, limit=limit)
         for item in picked:

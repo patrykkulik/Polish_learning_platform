@@ -134,10 +134,24 @@ def lexeme_vocabulary_nodes() -> dict[str, str]:
     word counted by none would have no meaning item to be introduced through —
     and grammar introduces a word only after its meaning item.
     """
-    return {
-        entry["lemma"]: entry.get("vocabulary_node", DEFAULT_VOCABULARY_NODE)
-        for entry in _load("lexemes.yaml")
+    vocabulary = {
+        entry["key"] for entry in _load("nodes.yaml") if entry["type"] == "vocabulary"
     }
+    owners: dict[str, str] = {}
+    for entry in _load("lexemes.yaml"):
+        owner = entry.get("vocabulary_node", DEFAULT_VOCABULARY_NODE)
+        # Hand-edited, so checked by name. A key that does not exist used to fail
+        # later as a bare KeyError with no lemma in it; a real *grammar* node
+        # failed silently — the word owned by no vocabulary node, its meaning
+        # item scoring grammar cards, and the word-first rule and the
+        # reachability guard both unable to see it.
+        if owner not in vocabulary:
+            raise AssertionError(
+                f"{entry['lemma']!r} names vocabulary_node {owner!r}, which is not "
+                f"a vocabulary node; expected one of {sorted(vocabulary)}"
+            )
+        owners[entry["lemma"]] = owner
+    return owners
 
 
 def mass_nouns() -> set[str]:
@@ -151,6 +165,20 @@ def mass_nouns() -> set[str]:
     """
     return {
         entry["lemma"] for entry in _load("lexemes.yaml") if entry.get("mass")
+    }
+
+
+def indefinite_articles() -> dict[str, str]:
+    """lemma -> `a` or `an`, where the first letter would choose wrongly.
+
+    English picks the article by sound. `university` begins with a consonant
+    sound, and a rule reading the first letter wrote "This is an university" —
+    new wrong English from the rule added to remove it.
+    """
+    return {
+        entry["lemma"]: entry["indefinite_article"]
+        for entry in _load("lexemes.yaml")
+        if entry.get("indefinite_article")
     }
 
 
@@ -447,6 +475,59 @@ def ingest_all(db: Session) -> dict[str, Node]:
     return nodes
 
 
+#: The daily goal every learner was created with before it became the cap.
+OLD_DEFAULT_GOAL = 20
+
+
+def migrate_daily_goal(db: Session) -> int:
+    """Bring a stored *default* goal forward to `DAILY_NEW_CAP`, once per learner.
+
+    A default changed in code never reaches a row that stored the old one:
+    `ensure_user` wrote `daily_goal_items: 20` explicitly, and `record_activity`
+    falls back to `DAILY_NEW_CAP` only for an absent key. The decision to make
+    the goal the cap was measured and then not delivered to the one learner the
+    measurements were for.
+
+    Only the old default moves — a learner who chose 15 meant 15. And the stamp,
+    not the value, says this has run, so a learner who deliberately sets 20
+    afterwards is not overruled by the next build. The same reason
+    `concepts.reconcile` stamps rather than guessing from state.
+    """
+    moved = 0
+    for user in db.scalars(select(AppUser)):
+        settings = dict(user.settings_json or {})
+        if settings.get("goal_migrated_at"):
+            continue
+        if settings.get("daily_goal_items") == OLD_DEFAULT_GOAL:
+            settings["daily_goal_items"] = DAILY_NEW_CAP
+            moved += 1
+        settings["goal_migrated_at"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        user.settings_json = settings
+    db.commit()
+    return moved
+
+
+def drop_items(db: Session, items: list) -> int:
+    """Delete items and the slots and variants that hang off them.
+
+    Only ever called on items nobody has answered, so there is no attempt, error
+    event or card history to orphan — cards reference forms, senses and
+    patterns, never items.
+    """
+    from pl.models import ItemSlot, ItemVariant
+
+    ids = [item.id for item in items]
+    if not ids:
+        return 0
+    for table in (ItemSlot, ItemVariant):
+        for row in db.scalars(select(table).where(table.item_id.in_(ids))):
+            db.delete(row)
+    for item in items:
+        db.delete(item)
+    db.commit()
+    return len(ids)
+
+
 def stale_items(db: Session) -> list:
     """Items in this database that the current data files no longer produce.
 
@@ -490,12 +571,21 @@ def stale_items(db: Session) -> list:
     ]
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Build the whole curriculum into the configured database.
 
     Idempotent, so it is safe to re-run after editing any data file.
+
+    `--drop-unanswered-stale` deletes items the current frames no longer produce
+    *and* nobody has answered. Opt-in, because the build never deletes on its own
+    — but without it a sentence the owner flagged as wrong Polish went on being
+    served from every database built before the correction.
     """
-    from pl import db as database
+    import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    drop_stale = "--drop-unanswered-stale" in args
+    from pl import concepts, db as database
     from pl.content import frames
 
     database.create_all()
@@ -503,6 +593,16 @@ def main() -> None:
     try:
         ingest_all(session)
         items = frames.build(session)
+        # The build is the schema step, so it is also where the teaching surface
+        # is checked and where a learner who was already mid-course is recorded
+        # as having been taught what they have been answering for weeks. Neither
+        # can live at request time: `create_all` runs nowhere else, and
+        # `evaluate_unlocks` never latches a node without prerequisites, so a
+        # learner who has just unlocked N01 cannot be told apart from one who has
+        # read nothing.
+        concepts.validate(session)
+        reconciled = concepts.reconcile(session)
+        goals_moved = migrate_daily_goal(session)
         from sqlalchemy import func
 
         from pl.models import Item, Lexeme, Pattern
@@ -520,6 +620,15 @@ def main() -> None:
             f"  (template {counts.get('template', 0)},"
             f" generated {counts.get('generated', 0)})"
         )
+        print(
+            f"  concepts {len(concepts.all_concepts())}"
+            + (f", {reconciled} recorded as already taught" if reconciled else "")
+        )
+        if goals_moved:
+            print(
+                f"  daily goal moved from {OLD_DEFAULT_GOAL} to {DAILY_NEW_CAP} for "
+                f"{goals_moved} learner(s)"
+            )
 
         # Diagnostic only, and it runs the whole build a second time — so its
         # failure must not be reported as a failure of the build that already
@@ -557,12 +666,19 @@ def main() -> None:
                 f"    {len(untouched)} never answered, {len(historic)} with attempts"
                 f" behind them."
             )
-            print(
-                "  Nothing was deleted. The ones never answered carry no history and\n"
-                "  are safe to drop; the ones with attempts are the learner's record.\n"
-                "  All of them will still be served. Delete the database and rebuild to\n"
-                "  clear them, or keep them deliberately."
-            )
+            if drop_stale:
+                dropped = drop_items(session, untouched)
+                print(
+                    f"  Dropped {dropped} never answered. The {len(historic)} with "
+                    f"attempts are the learner's record and were kept."
+                )
+            else:
+                print(
+                    "  Nothing was deleted. The ones never answered carry no history and\n"
+                    "  are safe to drop — rebuild with --drop-unanswered-stale to drop\n"
+                    "  them; the ones with attempts are the learner's record and stay.\n"
+                    "  Until then all of them will still be served."
+                )
     finally:
         session.close()
 

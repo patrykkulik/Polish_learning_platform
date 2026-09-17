@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from pl import concepts as teaching
 from pl import db as database
 from pl import session as composer
 from pl import streak as streaks
@@ -44,7 +45,7 @@ from pl.models import (
     Node,
     Review,
 )
-from pl.schedule import apply_diagnosis, cards_for_item, ratings_for
+from pl.schedule import apply_diagnosis, card_advanced_since, cards_for_item, ratings_for
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +201,11 @@ def get_session(limit: int = 20):
         return {
             "items": [_serialise(db, i) for i in items],
             "stats": stats,
+            # At most one, for the node this session would otherwise introduce
+            # from next. The concept is taught before it is drilled, and the
+            # client re-fetches once it is acknowledged — so the lesson and the
+            # material it explains land in the same sitting.
+            "lesson": teaching.lesson_for(db, user.id),
             "progress": streaks.progress(db, user.id, user.settings_json),
         }
     finally:
@@ -232,17 +238,28 @@ def submit(payload: Submission):
         )
         db.commit()
 
-        # Populations the routing table *would* have scored but whose card had
-        # already advanced today (see `ONE_REVIEW_PER_DAY`). Reporting these as
-        # "untouched" alongside the ones the table deliberately leaves alone
-        # would collapse two different facts into one word — "this exercise does
-        # not test that" and "this counted, and the schedule moves once a day".
+        # Populations the routing table *would* have scored but that this answer
+        # did not move, split by why. Reporting them as "untouched" alongside the
+        # ones the table deliberately leaves alone would collapse different facts
+        # into one word — and so would reporting them together:
+        #
+        # - `counted_earlier`: the card already advanced today (see
+        #   `ONE_REVIEW_PER_DAY`). True to say it counted.
+        # - `cooled_down`: the card is not due and advanced within
+        #   `EARLY_REVIEW_COOLDOWN_DAYS`, on an earlier day. Nothing was recorded
+        #   today, so "counted earlier today" would be false — and remediation
+        #   serves exactly these cards, so it was the common case.
+        day_start = composer.start_of_user_day(user.settings_json)
         rated = ratings_for(item, diagnosis.error_class)
-        counted_earlier = sorted(
-            population
-            for population in cards_for_item(db, user.id, item)
-            if population in rated and population not in applied
-        )
+        counted_earlier: list[str] = []
+        cooled_down: list[str] = []
+        for population, card in sorted(cards_for_item(db, user.id, item).items()):
+            if population not in rated or population in applied:
+                continue
+            if card_advanced_since(db, card, day_start):
+                counted_earlier.append(population)
+            else:
+                cooled_down.append(population)
 
         return {
             "correct": diagnosis.is_correct,
@@ -254,6 +271,7 @@ def submit(payload: Submission):
             # scheduling legible instead of magic.
             "scored": {k: int(v) for k, v in applied.items()},
             "counted_earlier": counted_earlier,
+            "cooled_down": cooled_down,
             "progress": streaks.progress(db, user.id, user.settings_json),
         }
     finally:
@@ -385,6 +403,72 @@ def _retention_curve(db, user_id: int, settings: dict, days: int = 30) -> list[d
 @app.get("/progress", response_class=HTMLResponse)
 def progress_page(request: Request):
     return templates.TemplateResponse(request, "progress.html", {})
+
+
+@app.get("/grammar", response_class=HTMLResponse)
+def grammar_page(request: Request):
+    return templates.TemplateResponse(request, "grammar.html", {})
+
+
+@app.get("/grammar/{key}", response_class=HTMLResponse)
+def grammar_concept_page(request: Request, key: str):
+    return templates.TemplateResponse(request, "grammar.html", {})
+
+
+@app.get("/api/concepts")
+def list_concepts():
+    db = database.session()
+    try:
+        return {"concepts": teaching.index(db, _user(db).id)}
+    finally:
+        db.close()
+
+
+@app.get("/api/concepts/{key}")
+def get_concept(key: str):
+    """A concept the learner has reached, in full; one they have not, by name.
+
+    The index shows the shape of the course and the explanation opens when the
+    concept does, so a locked concept carries no prose here either — a page that
+    withholds what its own API hands out is not a gate.
+    """
+    db = database.session()
+    try:
+        user = _user(db)
+        concept = teaching.by_key(key)
+        if concept is None:
+            raise HTTPException(404, "no such concept")
+        state = {
+            "key": concept["key"],
+            "title": concept["title"],
+            "read": key in teaching.read_keys(db, user.id),
+        }
+        if not teaching.is_open(db, user.id, concept):
+            return {**state, "open": False}
+        return {**state, "open": True, **teaching.render(db, concept)}
+    finally:
+        db.close()
+
+
+@app.post("/api/concepts/{key}/read")
+def read_concept(key: str):
+    """Acknowledge a lesson. Writes no card, no review and no attempt.
+
+    Reading is not answering: the daily goal counts items answered, and a goal a
+    page of prose can satisfy is not a goal.
+    """
+    db = database.session()
+    try:
+        user = _user(db)
+        concept = teaching.by_key(key)
+        if concept is None:
+            raise HTTPException(404, "no such concept")
+        if not teaching.is_open(db, user.id, concept):
+            raise HTTPException(403, "this concept has not opened yet")
+        teaching.mark_read(db, user.id, key)
+        return {"key": key, "read": True}
+    finally:
+        db.close()
 
 
 def _mastered_for_display(db, user_id: int, node, detail: dict) -> bool:

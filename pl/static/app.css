@@ -1,0 +1,79 @@
+/* Shared by every page: the palette, and how a lesson reads.
+ *
+ * Held in one file for the reason `escapeHtml` and the lesson renderer live in
+ * common.js — a correction to a copy misses its twin. The first copy of the
+ * lesson rules already had: the session's declension table dropped the row
+ * grouping that marks two cases sharing one form, so syncretism read differently
+ * in the lesson that teaches it and the page that keeps it.
+ */
+
+:root {
+  --ground: #faf8f5;
+  --raised: #ffffff;
+  --line: #e3ddd4;
+  --ink: #1c1a17;
+  --muted: #6b645b;
+  --faint: #989085;
+  --accent: #a8323c;
+  --good: #2f6b46;
+  --good-bg: #e8f1ea;
+  --bad-bg: #f7ebec;
+  --warn: #8a6320;
+  --warn-bg: #f6efe0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #16181c;
+    --raised: #1e2126;
+    --line: #2f343b;
+    --ink: #ece8e2;
+    --muted: #9aa0a8;
+    --faint: #6b7178;
+    --accent: #e0757e;
+    --good: #7fc79b;
+    --good-bg: #1b2b22;
+    --bad-bg: #2c1e20;
+    --warn: #d9ab5e;
+    --warn-bg: #2b2418;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #16181c; --raised: #1e2126; --line: #2f343b;
+  --ink: #ece8e2; --muted: #9aa0a8; --faint: #6b7178;
+  --accent: #e0757e; --good: #7fc79b; --good-bg: #1b2b22;
+  --bad-bg: #2c1e20; --warn: #d9ab5e; --warn-bg: #2b2418;
+}
+
+/* A lesson is prose first, held to the column the exercises use. */
+.lesson h2 { font-family: ui-serif, Georgia, "Times New Roman", serif; font-size: 1.3rem; font-weight: 600; margin: 0; }
+.lesson .sec { margin-top: 1.3rem; }
+.lesson .sec h3 { font-family: ui-serif, Georgia, serif; font-size: 1rem; margin: 0 0 .4rem; }
+.lesson .body { font-size: .95rem; color: var(--ink); }
+.lesson .body p { margin: .55rem 0; }
+.lesson .body code { font-family: ui-monospace, Menlo, monospace; font-size: .88em; background: var(--line); padding: .05rem .3rem; border-radius: 4px; }
+.lesson .body em { font-style: italic; }
+.lesson .body strong { font-weight: 650; }
+.lesson .body ul { margin: .55rem 0; padding-left: 1.1rem; }
+.lesson .body li { margin: .3rem 0; }
+
+.lesson table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: .6rem; }
+.lesson thead th {
+  text-align: left; font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--faint); font-weight: 650;
+  padding: 0 .6rem .5rem 0; border-bottom: 1px solid var(--line);
+}
+.lesson tbody td { padding: .55rem .6rem .55rem 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+
+/* The declension table. The question column is the point: a learner who asks
+   kogo? czego? and hears kota has found the case without the terminology. */
+.decl { margin-top: .9rem; }
+.decl caption { text-align: left; font-size: .82rem; color: var(--muted); padding-bottom: .4rem; }
+.decl td.case { white-space: nowrap; }
+.decl td.q { color: var(--faint); font-size: .84rem; white-space: nowrap; }
+.decl td.form { font-family: ui-serif, Georgia, serif; font-size: 1.05rem; }
+.decl td.form b { font-weight: 650; }
+.decl .key { font-size: .74rem; color: var(--faint); }
+/* Two rows sharing one form is the lesson, not a rendering accident. */
+.decl tr.shared td { border-bottom-color: transparent; }
+.decl tr.shared + tr td { border-top: 0; }
+.shared-note { font-size: .78rem; color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: .3rem .5rem; display: inline-block; margin-top: .5rem; }

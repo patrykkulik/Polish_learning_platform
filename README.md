@@ -20,7 +20,7 @@ Design: [`docs/design/polish-learning-platform-v1.md`](docs/design/polish-learni
 | Golden corpus | **98.5%** (64/65) | ≥ 95% |
 | Weakest class | `CASE_WRONG` **85.7%** | ≥ 80% per class |
 | Paradigm round-trip | all 23 M1 lexemes | no exceptions |
-| Test suite | 290 passing | — |
+| Test suite | 324 passing | — |
 
 Measured while proving it:
 
@@ -43,8 +43,8 @@ announced, and one announced twice teaches the learner the number is decorative.
 
 **M2 — cases, aspect and whole sentences.** *(partly built)* Instrumental,
 genitive split three ways, locative with its palatalisation alternations, and
-aspect taught from the first verb as pairs. 192 lexemes, 25 frames, 32 authored
-sentences, **2,621 items** across six exercise types — cloze (1,821),
+aspect taught from the first verb as pairs. 192 lexemes, 27 frames, 32 authored
+sentences, **2,619 items** across six exercise types — cloze (1,819),
 free translation (342), multiple choice (325, covering both form selection and
 meaning recall), preposition drill (89), listening dictation (26) and aspect
 choice (18) — all generated with no LLM, and reviewed by the owner sentence by

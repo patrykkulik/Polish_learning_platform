@@ -49,11 +49,60 @@ async function load() {
   } catch (e) {
     return fail(e.message, load);
   }
-  queue = data.items || [];
   setProgress(data.progress);
+  // A concept is taught before it is drilled, so a lesson takes the session
+  // before any question does. Its node introduces nothing until it is read.
+  if (data.lesson) return renderLesson(data.lesson);
+  queue = data.items || [];
   index = 0;
   completed = 0;
   render();
+}
+
+/* The lesson step. Reading is not answering: nothing here is graded, nothing is
+ * scheduled, and it does not count toward the day's goal.
+ *
+ * Acknowledging re-loads the session rather than continuing with the queue this
+ * response carried — that queue was composed while the concept was still unread,
+ * so it holds none of the material the lesson just explained. Without the
+ * re-load the lesson and its exercises fall on different days. */
+function renderLesson(lesson) {
+  const sections = (lesson.sections || [])
+    .map(
+      (s) => `
+      <div class="sec">
+        <h3>${escapeHtml(s.heading)}</h3>
+        <div class="body">${markdown(s.body)}</div>
+      </div>`
+    )
+    .join("");
+  // The tables are the half a learner can check for themselves: `kot` shows one
+  // form in two rows, which is the rule rather than a claim about it.
+  const tables = (lesson.tables || []).map(declension).join("");
+
+  stage.innerHTML = `
+    <div class="node">New skill — read this first</div>
+    <div class="card lesson">
+      <h2>${escapeHtml(lesson.title)}</h2>
+      <p class="what">${escapeHtml(lesson.summary || "")}</p>
+      ${sections}
+      ${tables}
+      <p>
+        <a class="link" href="/grammar/${encodeURIComponent(lesson.key)}">Keep this page — it stays in the grammar</a>
+      </p>
+    </div>
+    <p>
+      <button class="primary" id="got-it">Got it — start the questions</button>
+    </p>`;
+
+  document.getElementById("got-it").onclick = async () => {
+    try {
+      await request(`/api/concepts/${encodeURIComponent(lesson.key)}/read`, { method: "POST" });
+    } catch (e) {
+      return fail(e.message, load);
+    }
+    load();
+  };
 }
 
 function render() {
@@ -170,7 +219,7 @@ function showVerdict(data) {
   v.innerHTML = `
     <div class="label">${escapeHtml(heading)}</div>
     <div class="why">${escapeHtml(data.message)}</div>
-    <div class="routed">${routedChips(data.scored, data.counted_earlier || [])}</div>
+    <div class="routed">${routedChips(data.scored, data.counted_earlier || [], data.cooled_down || [])}</div>
   `;
 
   const go = document.getElementById("go");
@@ -194,7 +243,7 @@ function onceEnter(e) {
 /* The scheduling made legible: a card that was not scored is shown as
  * untouched, because "we deliberately left this alone" is information the
  * learner benefits from seeing. */
-function routedChips(scored, countedEarlier) {
+function routedChips(scored, countedEarlier, cooledDown) {
   return ["pattern", "morph", "lexical"]
     .map((pop) => {
       const label = POPULATION_LABEL[pop];
@@ -205,6 +254,11 @@ function routedChips(scored, countedEarlier) {
       // "This counted, and the schedule moves once a day" is a different fact
       // from "this exercise does not test that", and the learner should not
       // have to guess which one they are looking at.
+      // Not due, and it moved within the last few days: the schedule is resting,
+      // which is a different fact from "counted earlier today".
+      if (cooledDown.includes(pop)) {
+        return `<span class="chip earlier">${label} · not due yet, resting</span>`;
+      }
       if (countedEarlier.includes(pop)) {
         return `<span class="chip earlier">${label} · counted earlier today</span>`;
       }

@@ -87,6 +87,19 @@ def _answer(db, user, count: int) -> None:
     db.commit()
 
 
+def _read_every_concept(db, user) -> None:
+    """Take the lessons as read.
+
+    A concept is taught before it is drilled, so a fresh learner's session is a
+    lesson and no items. These tests are about the streak, not the teaching, and
+    a session of nothing would satisfy criterion 12 vacuously.
+    """
+    from pl import concepts
+
+    for concept in concepts.all_concepts():
+        concepts.mark_read(db, user.id, concept["key"])
+
+
 def _owe_a_card(db, user) -> None:
     """Give the learner one overdue card, so the debt condition fails.
 
@@ -331,6 +344,7 @@ def test_a_learner_who_finishes_a_real_session_earns_the_streak(db, user):
     from pl.api import grade_item
     from pl.session import build_session, start_of_user_day
 
+    _read_every_concept(db, user)
     picked, _ = build_session(db, user.id, SETTINGS, limit=GOAL + 2)
     assert len(picked) >= GOAL, "the session was too short to meet the daily goal"
 
@@ -452,6 +466,7 @@ def test_a_new_learner_can_meet_the_goal_on_a_day_with_nothing_due(db):
     db.add(learner)
     db.commit()
 
+    _read_every_concept(db, learner)
     # The API's default session length.
     picked, stats = build_session(db, learner.id, settings)
     assert stats["debt_total"] == 0, "not a clean day"
