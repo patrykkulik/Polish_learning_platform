@@ -118,14 +118,18 @@ else follows from that.
 
 ### M1 — the learning loop
 
-9. A daily session is served in the order **debt → remediation → new**, composed debt → new →
-   remediation, and introduces nothing while more than `DEBT_TOLERANCE` (5) cards are due today.
+9. A daily session is composed debt → new → remediation and **served in random order**, and
+   introduces nothing while more than `DEBT_TOLERANCE` (5) cards are due today.
    *Amended 2026-09-18: as first written this read "composes in the order debt → remediation → new,
    and introduces no new cards while any card is overdue". Both clauses were changed deliberately
    and by measurement, and the criterion was not updated with them: composed in the order it is
    served, remediation starved introduction from day two (§"Session composition"); with no tolerance
    one overdue card shut introduction for the day, and the learner met 123 items where the bound of
-   five meets 224 (§"Known defects").*
+   five meets 224 (§"Known defects"). Amended again the same day at the owner's request: served
+   debt → remediation → new, a round read as old words in a block and new ones in another, so the
+   session is now shuffled as it is sent. Composition — which every pacing measurement reads — is
+   unchanged. The cost is that a learner who stops partway may leave a due card unanswered that the
+   old order would have served first; one who finishes clears the same cards either way.*
 10. One submission produces exactly one `attempt` row, N `review` rows for the cards it scored, and M
     `error_event` rows — all sharing the attempt, with cards it did not score left untouched.
 11. `sklepie` for `sklepu` fails the pattern card and leaves the morph card's schedule unchanged;
@@ -179,7 +183,7 @@ guards makes it fail. **Closed** means the behaviour is there and a test proves 
 | 6 | Closed | `test_animacy_is_not_reported_as_a_generic_case_error` |
 | 7 | Closed | `test_dropped_ogonek_landing_on_a_real_form_is_a_case_error` |
 | 8 | Closed | `test_dropped_ogonek_landing_on_no_form_is_a_spelling_slip`; `test_orthography_does_not_fail_the_grammar_card` |
-| 9 | Closed, as amended | `test_debt_past_the_bound_stops_anything_new`; `test_a_small_backlog_does_not_stop_the_curriculum_opening` |
+| 9 | Closed, as amended | `test_debt_past_the_bound_stops_anything_new`; `test_a_small_backlog_does_not_stop_the_curriculum_opening`; `test_a_session_is_served_in_a_random_order` |
 | 10 | Closed | `test_one_answer_writes_one_attempt_and_only_the_fan_out_it_scored`, through `/api/submit` |
 | 11 | Closed | `test_the_named_pair_sklepie_for_sklepu_fails_only_the_rule`; `test_wrong_ending_fails_the_form_and_passes_the_rule` |
 | 12 | Closed | `tests/test_streak.py` — both conditions, freezes, absence and the timezone boundary |

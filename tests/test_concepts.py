@@ -188,9 +188,16 @@ def test_each_table_shows_the_ending_its_caption_names(db):
     assert genitive["kuchnia"]["gen"] == ["kuchni"], "soft stem: -i"
     assert genitive["książka"]["gen"] == ["książki"], "k takes -i by spelling"
 
-    assert _shown(db, "VOCAB_GENDER")["noc"]["nom"] == ["noc"]
     noc = _shown(db, "ACCUSATIVE")["noc"]
     assert noc["nom"] == noc["acc"] == ["noc"], "nothing to swap, so nothing moves"
+
+
+def test_the_first_lesson_shows_no_case_table(db):
+    """Every row of a declension table names a case and asks its question —
+    `mianownik`, *kto? co?* — and the first lesson comes before any case is
+    taught. The owner found it confused more than it helped, so gender is shown
+    with an example table in the prose instead: word, meaning, gender."""
+    assert concepts.render(db, concepts.by_key("VOCAB_GENDER"))["tables"] == []
 
 
 @pytest.mark.parametrize(
@@ -332,7 +339,7 @@ def test_one_lesson_is_offered_at_a_time_in_node_order(db, user):
 
 
 def test_a_lesson_carries_its_tables_resolved(db, user):
-    lesson = concepts.lesson_for(db, user.id)
+    lesson = concepts.render(db, concepts.by_key("CASES"))
     assert lesson["sections"], "a lesson with no prose teaches nothing"
     assert lesson["tables"] and lesson["tables"][0]["rows"]
 

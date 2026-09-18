@@ -326,5 +326,10 @@ flowchart TD
       grammar terms only with their meaning beside them — keeping every fact the
       earlier rounds corrected. Every list item is written on one line: the
       renderer ends a list at a line that does not start with `- `, so a
-      wrapped item split into an item and a stray paragraph. **Open**: the
-      owner's read of the plain version.
+      wrapped item split into an item and a stray paragraph. **Round 3, the
+      same day:** every Polish word and example sentence now carries its English
+      meaning — `brat` (brother), `Widzę kota` (I see a cat) — taken from the
+      course's own glosses so a lesson and an exercise never disagree; and the
+      first lesson lost its declension tables, whose rows name cases and ask
+      their questions before any case is taught, for a plain table of word,
+      meaning and gender. **Open**: the owner's read of this version.

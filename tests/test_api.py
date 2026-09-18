@@ -160,7 +160,7 @@ def test_a_session_carries_one_lesson_until_it_is_acknowledged(client):
     assert lesson and lesson["key"] == "VOCAB_GENDER", (
         "a new learner's first session should open with the first concept"
     )
-    assert lesson["sections"] and lesson["tables"], "a lesson needs its content"
+    assert lesson["sections"], "a lesson needs its content"
 
     assert http.post(f"/api/concepts/{lesson['key']}/read").json()["read"] is True
     assert http.get("/api/session?limit=20").json()["lesson"] is None
@@ -334,6 +334,37 @@ def test_one_answer_writes_one_attempt_and_only_the_fan_out_it_scored(client):
         assert (after.id, after.due_at, after.fsrs_state_json) == form_before, (
             "the form card was not scored, so it must not have moved"
         )
+
+
+def test_a_session_is_served_in_a_random_order(client, monkeypatch):
+    """Old and new words mixed, not in blocks.
+
+    The composer puts review first and new material last, and served in that
+    order a round read as five old words and then five new ones. It is shuffled
+    on the way out, so the composition itself — and every pacing measurement
+    made on it — is unchanged: the same items, in another order.
+    """
+    import random
+
+    from pl import session as composer
+
+    http, _ = client
+    _taught_session(http)
+    composed = []
+    real = composer.build_session
+
+    def spy(*args, **kwargs):
+        items, stats = real(*args, **kwargs)
+        composed.extend(i.id for i in items)
+        return items, stats
+
+    monkeypatch.setattr(composer, "build_session", spy)
+    monkeypatch.setattr(api, "SESSION_ORDER", random.Random(20260918))
+    served = [i["id"] for i in http.get("/api/session?limit=20").json()["items"]]
+
+    assert len(composed) >= 5, "too few items for an order to mean anything"
+    assert sorted(served) == sorted(composed), "the shuffle changed what was served"
+    assert served != composed, "served in the order it was composed"
 
 
 def test_only_an_explicit_request_is_an_extra_round(client, monkeypatch):

@@ -12,6 +12,7 @@ page with a PWA later replaces the page and not the backend.
 from __future__ import annotations
 
 import logging
+import random
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -55,6 +56,11 @@ HERE = Path(__file__).resolve().parent
 app = FastAPI(title="Polish Learning Platform")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+
+#: The order a session is served in. A generator of its own, because FSRS draws
+#: its interval fuzz from the global one — shuffling there would shift every
+#: schedule computed after it.
+SESSION_ORDER = random.Random()
 
 #: What the learner is told when the database is older than the code.
 REBUILD_NEEDED = (
@@ -255,8 +261,14 @@ def get_session(limit: int = 20, extra: bool = False):
         items, stats = composer.build_session(
             db, user.id, user.settings_json, limit, extra=extra
         )
+        # Served mixed, not in the blocks the composer builds it in — review
+        # first and new material last read as five old words and then five new
+        # ones. Shuffled here, on the way out, so the composition and every
+        # measurement made on it stay exactly as they were.
+        served = list(items)
+        SESSION_ORDER.shuffle(served)
         return {
-            "items": [_serialise(db, i) for i in items],
+            "items": [_serialise(db, i) for i in served],
             "stats": stats,
             # At most one, for the node this session would otherwise introduce
             # from next. The concept is taught before it is drilled, and the

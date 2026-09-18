@@ -69,34 +69,21 @@ concepts:
     sections:
       - heading: How to tell the gender
         body: |
-          Every Polish noun is masculine, feminine or neuter. You need to know which, because the endings you add later depend on it.
+          Every Polish noun is masculine, feminine or neuter. You need to know which, because the endings you add later depend on it. The last letter usually tells you:
 
-          The last letter usually tells you:
-
-          - Ends in `-a`: almost always feminine — `kawa`.
-          - Ends in `-o` or `-e`: almost always neuter — `okno`.
-          - Ends in a consonant: usually masculine — `sklep`, `dom`, `chleb`.
+          | the word ends in | gender | example |
+          |---|---|---|
+          | `-a` | feminine, almost always | `kawa` — coffee |
+          | `-o` or `-e` | neuter, almost always | `okno` — window |
+          | a consonant | masculine, usually | `sklep` — shop, `dom` — house |
       - heading: Watch out for these endings
         body: |
           After `c`, `cz`, `sz`, `rz`, `ż`, `l`, `j`, or a letter with an accent (`ś`, `ć`, `ń`), the word can be masculine or feminine.
 
-          `klucz`, `lekarz` and `hotel` are masculine. `noc`, `rzecz`, `twarz`, `mysz`, `sól` and `wieś` are feminine. Learn the gender with the word.
+          Masculine: `klucz` (key), `lekarz` (doctor), `hotel` (hotel). Feminine: `noc` (night), `rzecz` (thing), `twarz` (face), `mysz` (mouse), `sól` (salt), `wieś` (countryside). Learn the gender with the word.
       - heading: One more split, later
         body: |
-          Masculine words for people and animals (`brat`, `kot`) change differently from masculine words for things (`sklep`). It is about grammar, not about being alive: a chicken you buy to eat still counts as an animal. This gets its own lesson later.
-    tables:
-      - lexeme: kawa
-        caption: Feminine — ends in -a
-        cases: [nom]
-      - lexeme: sklep
-        caption: Masculine — ends in a consonant
-        cases: [nom]
-      - lexeme: noc
-        caption: Feminine, even though it ends in a consonant
-        cases: [nom]
-      - lexeme: okno
-        caption: Neuter — ends in -o
-        cases: [nom]
+          Masculine words for people and animals, like `brat` (brother) and `kot` (cat), change differently from masculine words for things, like `sklep` (shop). It is about grammar, not about being alive: `kurczak` (chicken) still counts as an animal when you buy it to eat. This gets its own lesson later.
 
   - key: CASES
     title: Odmiana przez przypadki — the seven cases
@@ -110,31 +97,31 @@ concepts:
         body: |
           In English, word order shows who does what: *the cat sees the dog* is not *the dog sees the cat*.
 
-          Polish shows it with endings instead. In `Kot widzi psa`, the ending of `psa` shows that the dog is the one being seen — so `Psa widzi kot` means the same thing. Word order is flexible; endings are not.
+          Polish shows it with endings instead. `Kot widzi psa` means "the cat sees the dog". The ending of `psa` (dog) shows that the dog is the one being seen — so `Psa widzi kot` means the same thing. Word order is flexible; endings are not.
       - heading: The seven cases
         body: |
           Polish children learn each case with a question. Ask the question, and the answer takes that case.
 
           | case | question | used for |
           |---|---|---|
-          | mianownik | kto? co? | the person or thing doing something |
-          | dopełniacz | kogo? czego? | "of", and after `nie` |
-          | celownik | komu? czemu? | "to" or "for" someone |
-          | biernik | kogo? co? | the person or thing something is done to |
-          | narzędnik | (z) kim? (z) czym? | "with", and what someone is |
-          | miejscownik | (o) kim? (o) czym? | "about", and where something is |
+          | mianownik | kto? co? (who? what?) | the person or thing doing something |
+          | dopełniacz | kogo? czego? (of whom? of what?) | "of", and after `nie` (not) |
+          | celownik | komu? czemu? (to whom? to what?) | "to" or "for" someone |
+          | biernik | kogo? co? (whom? what?) | the person or thing something is done to |
+          | narzędnik | (z) kim? (z) czym? (with whom? with what?) | "with", and what someone is |
+          | miejscownik | (o) kim? (o) czym? (about whom? about what?) | "about", and where something is |
           | wołacz | o! | calling someone |
 
           Mianownik is the form you find in a dictionary. The course teaches the others one at a time, the most useful first.
       - heading: One word in all seven cases
         body: |
-          This is called a declension (odmiana). Most feminine words ending in `-a` follow the same pattern as `kawa`.
+          This is called a declension (odmiana). Most feminine words ending in `-a` follow the same pattern as `kawa` (coffee).
     tables:
       - lexeme: kawa
-        caption: kawa — feminine
+        caption: kawa (coffee) — feminine
         cases: [nom, gen, dat, acc, inst, loc, voc]
       - lexeme: sklep
-        caption: sklep — masculine, a thing
+        caption: sklep (shop) — masculine, a thing
         cases: [nom, gen, dat, acc, inst, loc, voc]
 
   - key: ACCUSATIVE
@@ -150,10 +137,10 @@ concepts:
           Verbs like `widzieć` (to see), `mieć` (to have) and `kupować` (to buy) act on something. That something goes in biernik. Its question is *kogo? co?* (whom? what?).
       - heading: What changes
         body: |
-          - Feminine words ending in `-a` change it to `-ę`: `kawa` → `Mam kawę`.
-          - Neuter words stay the same: `Widzę okno`.
-          - Masculine words for things stay the same: `Widzę sklep`.
-          - Feminine words ending in a consonant stay the same: `Widzę mysz`.
+          - Feminine words ending in `-a` change it to `-ę`: `kawa` (coffee) → `Mam kawę` (I have coffee).
+          - Neuter words stay the same: `Widzę okno` (I see a window).
+          - Masculine words for things stay the same: `Widzę sklep` (I see a shop).
+          - Feminine words ending in a consonant stay the same: `Widzę mysz` (I see a mouse).
 
           Masculine words for people and animals work differently. They get their own lesson later.
       - heading: Why only the -a words change
@@ -161,47 +148,49 @@ concepts:
           The `-a` is an ending, so Polish swaps it for `-ę`. The other groups never had a separate object form, so the dictionary form does both jobs.
     tables:
       - lexeme: kawa
-        caption: Feminine -a — changes
+        caption: kawa (coffee) — feminine -a, changes
         cases: [nom, acc]
       - lexeme: noc
-        caption: Feminine, ends in a consonant — stays the same
+        caption: noc (night) — feminine, ends in a consonant, stays the same
         cases: [nom, acc]
       - lexeme: sklep
-        caption: Masculine thing — stays the same
+        caption: sklep (shop) — masculine thing, stays the same
         cases: [nom, acc]
       - lexeme: okno
-        caption: Neuter — stays the same
+        caption: okno (window) — neuter, stays the same
         cases: [nom, acc]
 
   - key: ANIMACY
     title: Masculine people and animals change as objects
     introduced_by: N05
     summary: >-
-      Widzę sklep, but Widzę kota. A masculine word for a person or an animal
-      changes when it is the object of a verb.
+      Widzę sklep (I see a shop), but Widzę kota (I see a cat). A masculine word
+      for a person or an animal changes when it is the object of a verb.
     sections:
       - heading: The rule
         body: |
           When a masculine word for a person or an animal is the object of a verb, it usually ends in `-a`:
 
-          `kot` → `Widzę kota`. `pies` → `Widzę psa`. `brat` → `Widzę brata`.
+          - `kot` (cat) → `Widzę kota` (I see a cat).
+          - `pies` (dog) → `Widzę psa` (I see a dog).
+          - `brat` (brother) → `Widzę brata` (I see my brother).
 
-          Masculine words for things do not change: `Widzę sklep`, `Widzę komputer`.
+          Masculine words for things do not change: `Widzę sklep` (I see a shop), `Widzę komputer` (I see a computer).
       - heading: It is grammar, not biology
         body: |
-          A chicken you buy to eat still counts as an animal: `Kupuję kurczaka`. A flower is alive, but it counts as a thing: `Widzę kwiat`.
+          A chicken you buy to eat still counts as an animal: `Kupuję kurczaka` (I'm buying a chicken). A flower is alive, but it counts as a thing: `Widzę kwiat` (I see a flower).
       - heading: Why
         body: |
-          Long ago, these words looked the same whether they were doing something or having something done to them. For people and animals, which can easily be either, that was confusing. So Polish borrowed another form — the genitive (dopełniacz), which you will learn later. The tables show it: for `kot`, the genitive and the object form are the same word.
+          Long ago, these words looked the same whether they were doing something or having something done to them. For people and animals, which can easily be either, that was confusing. So Polish borrowed another form — the genitive (dopełniacz), which you will learn later. The tables show it: for `kot` (cat), the genitive and the object form are the same word.
     tables:
       - lexeme: kot:Sm2
-        caption: kot — an animal, so the object form is kota
+        caption: kot (cat) — an animal, so the object form is kota
         cases: [nom, gen, acc]
       - lexeme: pies:Sm2
-        caption: pies — the middle of the word changes too
+        caption: pies (dog) — the middle of the word changes too
         cases: [nom, gen, acc]
       - lexeme: sklep
-        caption: sklep — a thing, so it stays the same
+        caption: sklep (shop) — a thing, so it stays the same
         cases: [nom, gen, acc]
 
   - key: INSTRUMENTAL
@@ -218,24 +207,24 @@ concepts:
           - **What someone is**: `Jestem nauczycielem` (I am a teacher).
       - heading: The endings
         body: |
-          Masculine and neuter words add `-em`: `brat` → `bratem`, `okno` → `oknem`. Feminine words change `-a` to `-ą`: `kawa` → `kawą`.
+          Masculine and neuter words add `-em`: `brat` (brother) → `bratem`, `okno` (window) → `oknem`. Feminine words change `-a` to `-ą`: `kawa` (coffee) → `kawą`.
 
-          Words ending in `k` or `g` add `-iem`: `ptak` → `ptakiem`. Polish does not write `-kem`.
+          Words ending in `k` or `g` add `-iem`: `ptak` (bird) → `ptakiem`. Polish does not write `-kem`.
       - heading: I am a teacher
         body: |
-          After `jestem` (I am), the job goes in narzędnik: `Jestem nauczycielem`. After `to jest` (this is), it stays in the dictionary form: `To jest nauczyciel`.
+          After `jestem` (I am), the job goes in narzędnik: `Jestem nauczycielem` (I am a teacher). After `to jest` (this is), it stays in the dictionary form: `To jest nauczyciel` (this is a teacher).
     tables:
       - lexeme: brat
-        caption: Masculine — adds -em
+        caption: brat (brother) — adds -em
         cases: [nom, inst]
       - lexeme: ptak
-        caption: Ends in k — adds -iem
+        caption: ptak (bird) — ends in k, adds -iem
         cases: [nom, inst]
       - lexeme: kawa
-        caption: Feminine — -a becomes -ą
+        caption: kawa (coffee) — -a becomes -ą
         cases: [nom, inst]
       - lexeme: okno
-        caption: Neuter — adds -em
+        caption: okno (window) — adds -em
         cases: [nom, inst]
 
   - key: GENITIVE
@@ -243,45 +232,45 @@ concepts:
     introduced_by: N08
     also_taught_in: [N09, N10]
     summary: >-
-      Use dopełniacz after nie, to say whose something is, and after words like
-      do and bez. You will use it a lot.
+      Use dopełniacz after nie (not), to say whose something is, and after words
+      like do (to) and bez (without). You will use it a lot.
     sections:
       - heading: When to use it
         body: |
-          - **After a negative verb**: `Mam czas` → `Nie mam czasu` (I don't have time).
+          - **After a negative verb**: `Mam czas` (I have time) → `Nie mam czasu` (I don't have time).
           - **To say whose something is**: `dom brata` (my brother's house). The owner comes second.
-          - **After some prepositions**: `do`, `od`, `u`, `dla`, `bez`, `obok` — `Idę do sklepu`, `To jest dla brata`.
+          - **After some prepositions**: `do` (to), `od` (from), `u` (at someone's), `dla` (for), `bez` (without), `obok` (next to) — `Idę do sklepu` (I'm going to the shop), `To jest dla brata` (this is for my brother).
       - heading: Why nie changes it
         body: |
-          `Nie ma` means "there is none". Polish uses dopełniacz for amounts and parts of things (`dużo kawy`, a lot of coffee), and "none" works the same way.
+          `Nie ma` means "there is none". Polish uses dopełniacz for amounts and parts of things — `dużo kawy` (a lot of coffee) — and "none" works the same way.
       - heading: Masculine endings
         body: |
-          Masculine words end in `-u` or `-a`, and no simple rule tells you which: `sklep` → `sklepu`, but `chleb` → `chleba`. Learn each one with the word.
+          Masculine words end in `-u` or `-a`, and no simple rule tells you which: `sklep` (shop) → `sklepu`, but `chleb` (bread) → `chleba`. Learn each one with the word.
       - heading: Feminine and neuter endings
         body: |
           For feminine words, look at the letter before the final `-a`:
 
-          - A soft consonant — `ć`, `ś`, `ź`, `ń`, `j`, `l`, or `ni`, `si`, `ci`, `zi` before a vowel — takes `-i`: `kuchnia` → `kuchni`, `restauracja` → `restauracji`.
-          - `k` or `g` also takes `-i`, because Polish never writes `ky` or `gy`: `książka` → `książki`.
-          - Any other consonant takes `-y`: `kawa` → `kawy`, `ulica` → `ulicy`, `praca` → `pracy`.
+          - A soft consonant — `ć`, `ś`, `ź`, `ń`, `j`, `l`, or `ni`, `si`, `ci`, `zi` before a vowel — takes `-i`: `kuchnia` (kitchen) → `kuchni`, `restauracja` (restaurant) → `restauracji`.
+          - `k` or `g` also takes `-i`, because Polish never writes `ky` or `gy`: `książka` (book) → `książki`.
+          - Any other consonant takes `-y`: `kawa` (coffee) → `kawy`, `ulica` (street) → `ulicy`, `praca` (work) → `pracy`.
 
-          Neuter words take `-a`: `okno` → `okna`.
+          Neuter words take `-a`: `okno` (window) → `okna`.
     tables:
       - lexeme: sklep
-        caption: Masculine — -u
+        caption: sklep (shop) — masculine, -u
         cases: [nom, gen]
       - lexeme: chleb
-        caption: Masculine — -a
+        caption: chleb (bread) — masculine, -a
         cases: [nom, gen]
       - lexeme: kawa
-        caption: Feminine, hard consonant — -y
+        caption: kawa (coffee) — feminine, hard consonant, -y
         cases: [nom, gen]
       - lexeme: kuchnia
-        caption: Feminine, soft consonant — -i
+        caption: kuchnia (kitchen) — feminine, soft consonant, -i
         cases: [nom, gen]
       - lexeme: książka
-        caption: Feminine, k before the -a — -i
+        caption: książka (book) — feminine, k before the -a, -i
         cases: [nom, gen]
       - lexeme: okno
-        caption: Neuter — -a
+        caption: okno (window) — neuter, -a
         cases: [nom, gen]
