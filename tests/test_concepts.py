@@ -130,6 +130,116 @@ def test_every_case_row_carries_the_question_that_finds_it(db):
     assert questions == {"nom": "kto? co?", "gen": "kogo? czego?", "acc": "kogo? co?"}
 
 
+def test_the_question_is_given_in_english_as_well(db):
+    """A beginner cannot read `kogo? czego?` yet, and that column is the lesson.
+
+    The owner asked for it at the first table they saw: a column of Polish
+    questions teaches nothing to someone still learning what the words mean.
+    """
+    table = concepts.table(db, {"lexeme": "kawa", "cases": ["nom", "gen", "acc"]})
+    glosses = {row["case"]: row["gloss"] for row in table["rows"]}
+    assert glosses == {"nom": "who? what?", "gen": "of whom? of what?", "acc": "whom? what?"}
+
+
+def test_a_case_missing_its_english_question_is_refused_by_name(db, monkeypatch):
+    """Named, in the build and on the live path alike.
+
+    `_load` picks up an edit to the file without a restart and without the build
+    running, so a dropped `gloss:` would otherwise surface as a bare `KeyError`
+    inside `/api/session` — the learner could not study at all, and the log would
+    not say which case. And the build must not depend on some table happening to
+    list every case: the seven-case table in `CASES` is the only reason it would.
+    """
+    real = concepts._load()
+    gen = {k: v for k, v in real["cases"]["gen"].items() if k != "gloss"}
+    monkeypatch.setattr(
+        concepts, "_load", lambda: {**real, "cases": {**real["cases"], "gen": gen}}
+    )
+    with pytest.raises(AssertionError, match=r"'gen'.*'gloss'"):
+        concepts.table(db, {"lexeme": "kawa", "cases": ["gen"]})
+
+    # A case no table shows: only a check of the whole map can catch this one.
+    unshown = {"polish": "x", "english": "x", "questions": "x?"}
+    monkeypatch.setattr(
+        concepts, "_load", lambda: {**real, "cases": {**real["cases"], "unshown": unshown}}
+    )
+    with pytest.raises(AssertionError, match=r"'unshown'.*'gloss'"):
+        concepts.validate(db)
+
+
+def _shown(db, key: str) -> dict[str, dict[str, list[str]]]:
+    """What a concept's authored tables put in front of the learner."""
+    rendered = concepts.render(db, concepts.by_key(key))
+    return {
+        t["lexeme"]: {row["case"]: row["surfaces"] for row in t["rows"]}
+        for t in rendered["tables"]
+    }
+
+
+def test_each_table_shows_the_ending_its_caption_names(db):
+    """The forms under the captions the owner review rewrote, pinned.
+
+    `validate` refuses an empty cell and nothing else, so a table pointed at the
+    wrong lexeme — or a paradigm that changed under one — still builds. One of
+    these captions shipped disagreeing with its own table with the suite green.
+    """
+    genitive = _shown(db, "GENITIVE")
+    assert genitive["kawa"]["gen"] == ["kawy"], "hard stem: -y"
+    assert genitive["kuchnia"]["gen"] == ["kuchni"], "soft stem: -i"
+    assert genitive["książka"]["gen"] == ["książki"], "k takes -i by spelling"
+
+    assert _shown(db, "VOCAB_GENDER")["noc"]["nom"] == ["noc"]
+    noc = _shown(db, "ACCUSATIVE")["noc"]
+    assert noc["nom"] == noc["acc"] == ["noc"], "nothing to swap, so nothing moves"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["title", "summary", "heading", "caption"],
+)
+def test_markdown_in_a_field_shown_as_typed_is_refused(db, monkeypatch, field):
+    """Only a section body is Markdown; the other four fields are escaped.
+
+    A backtick in a caption reaches the learner as a backtick — eight captions
+    did exactly that until the owner flagged them — and the house style for
+    prose, a backtick around every Polish word, makes the next one likely.
+    """
+    concept = {
+        "key": "MARKED",
+        "title": "Plain",
+        "summary": "Plain",
+        "introduced_by": "N11",
+        "sections": [{"heading": "Plain", "body": "`kawa` is fine here"}],
+        "tables": [{"lexeme": "kawa", "caption": "Plain", "cases": ["nom"]}],
+    }
+    marked = "the ending is `-a`"
+    if field == "heading":
+        concept["sections"][0]["heading"] = marked
+    elif field == "caption":
+        concept["tables"][0]["caption"] = marked
+    else:
+        concept[field] = marked
+    _with_concepts(monkeypatch, [concept])
+    with pytest.raises(AssertionError, match=rf"'MARKED'.*{field}"):
+        concepts.validate(db)
+
+
+def test_a_concept_with_markdown_only_in_its_body_is_accepted(db, monkeypatch):
+    _with_concepts(
+        monkeypatch,
+        [
+            {
+                "key": "PLAIN",
+                "title": "Plain",
+                "summary": "Plain",
+                "introduced_by": "N11",
+                "sections": [{"heading": "Plain", "body": "`kawa` and *emphasis*"}],
+            }
+        ],
+    )
+    concepts.validate(db)
+
+
 def _with_concepts(monkeypatch, extra: list[dict]) -> None:
     """Author extra concepts for one test, the way an edit to the file would."""
     real = concepts._load()

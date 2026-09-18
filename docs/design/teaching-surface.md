@@ -93,8 +93,16 @@ grammar lesson for every new learner.
   equality: `kota` is tagged `subst:sg:gen.acc:m2`, so it lands in two rows — see
   criterion 3.
 - **Case questions are authored per case** (`kto? co?`, `kogo? czego?`, …) and
-  render beside each row. This is how the case is named in a Polish classroom,
-  and the questions are what make a case identifiable in a sentence.
+  render beside each row, with the English question beneath (`gloss` in the
+  `cases:` map — *who? what?*). This is how the case is named in a Polish
+  classroom, and the questions are what make a case identifiable in a sentence;
+  the English was added at the owner's review, because a beginner cannot yet
+  read the Polish ones. The build checks every case in the map for all four
+  fields, not only the cases some table happens to show.
+- **Only a section body is Markdown.** A title, summary, heading or caption is
+  escaped and shown as typed, and the build refuses a backtick or an asterisk
+  in any of them: eight captions reached the page with literal backticks before
+  the owner caught them.
 - **The gate is on introduction only.** `build_session`'s introduction segment
   skips a node whose concept is unread; the debt and remediation segments never
   consult it. A learner who ignores a lesson loses new material from that node
@@ -239,7 +247,8 @@ flowchart TD
   each show one form in two rows under "two cases, one form — that repeat is the
   rule", while `sklep` does not. `Verified:` in the session step and the grammar
   page.
-- 309 tests pass, 15 of them new. After the review fixes, **324 pass**.
+- 309 tests pass, 15 of them new. After the review fixes, **324 pass**; after
+  the owner's first review and the review of that, **332 pass**.
 - **The review fixes left pacing where it was.** Seed 7 over ninety days: 502
   items, 10 nodes, streak advanced on 87 days, before the fixes and after.
   `Verified:` by rerunning the simulator.
@@ -280,4 +289,14 @@ flowchart TD
       `/api/session`. Making it a clear error is a change this design does not
       contain.
 - [ ] The owner reviews the authored prose and case questions for all six
-      concepts, as with the sentence corpus.
+      concepts, as with the sentence corpus. **Round 1 done**: eleven blocks
+      flagged — a vague title, the case questions shown only in Polish, three
+      unnatural or unclear passages, an undefined "declension", "after a
+      negative", "the same cell", and hard and soft stems left undefined. All
+      eleven were applied, with three corrections found while doing it: `książka`
+      captioned as a soft stem, "a word ending in a consonant is almost always
+      masculine" (V01 itself teaches six feminines that do), and animacy described
+      as being alive (`kurczak` is animate, `kwiat` is not). A code review of that
+      round then caught the animacy fix applied to one lesson of the three, and
+      "hard" defined two ways. **Open**: the owner's re-read of the rewritten
+      prose.

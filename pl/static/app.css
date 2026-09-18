@@ -73,6 +73,9 @@
 .decl td.form { font-family: ui-serif, Georgia, serif; font-size: 1.05rem; }
 .decl td.form b { font-weight: 650; }
 .decl .key { font-size: .74rem; color: var(--faint); }
+/* The English question may wrap; the Polish one above it may not. Held to one
+   line, "about whom? about what?" pushed a 320px phone into sideways scroll. */
+.decl td.q .key { white-space: normal; }
 /* Two rows sharing one form is the lesson, not a rendering accident. */
 .decl tr.shared td { border-bottom-color: transparent; }
 .decl tr.shared + tr td { border-top: 0; }

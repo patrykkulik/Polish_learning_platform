@@ -172,6 +172,29 @@ def _surfaces(db: Session, lexeme: Lexeme, case: str, number: str) -> list[str]:
     return found
 
 
+#: What a declension row shows for its case, all four read from the `cases:` map.
+CASE_FIELDS = ("polish", "english", "questions", "gloss")
+
+#: The Markdown `markdown()` in common.js acts on — code and emphasis.
+MARKDOWN_MARKS = ("`", "*")
+
+
+def _case(case: str) -> dict:
+    """The row metadata for `case`, or an error that says which case and field.
+
+    `_load` picks up an edit without a restart and without the build, so this is
+    also the live path: a bare `KeyError` here would be a 500 on `/api/session`
+    that names nothing.
+    """
+    entry = cases().get(case)
+    if entry is None:
+        raise AssertionError(f"case {case!r} is not in the cases map")
+    missing = [field for field in CASE_FIELDS if not entry.get(field)]
+    if missing:
+        raise AssertionError(f"case {case!r} in the cases map has no {missing[0]!r}")
+    return entry
+
+
 def table(db: Session, spec: dict) -> dict:
     """One declension table, read out of the paradigm.
 
@@ -183,10 +206,10 @@ def table(db: Session, spec: dict) -> dict:
         raise AssertionError(
             f"table names lexeme {spec['lexeme']!r}, which is not in the set"
         )
-    meta = cases()
     number = spec.get("number", "sg")
     rows = []
     for case in spec["cases"]:
+        meta = _case(case)
         surfaces = _surfaces(db, lexeme, case, number)
         if not surfaces:
             raise AssertionError(
@@ -196,9 +219,13 @@ def table(db: Session, spec: dict) -> dict:
         rows.append(
             {
                 "case": case,
-                "polish": meta[case]["polish"],
-                "english": meta[case]["english"],
-                "questions": meta[case]["questions"],
+                "polish": meta["polish"],
+                "english": meta["english"],
+                "questions": meta["questions"],
+                # The question in English beside the Polish one. A learner who
+                # cannot yet read *kogo? czego?* learns nothing from a column of
+                # it, and the question is the part of the table that teaches.
+                "gloss": meta["gloss"],
                 "surfaces": surfaces,
             }
         )
@@ -248,8 +275,8 @@ def validate(db: Session) -> None:
     """Refuse a concept the learner could not be taught from.
 
     Runs in the content build, which is the only place that sees both the
-    authored file and the built paradigm. Three failures, and the third is
-    reported rather than repaired: a reading whose concept no longer exists is
+    authored file and the built paradigm. Every failure is refused but one, which
+    is reported rather than repaired: a reading whose concept no longer exists is
     the learner's history, and deleting it silently is not this function's call —
     the build already refuses a withdrawn lexeme the same way.
     """
@@ -257,6 +284,11 @@ def validate(db: Session) -> None:
     duplicates = sorted({k for k in keys if keys.count(k) > 1})
     if duplicates:
         raise AssertionError(f"concepts.yaml declares {duplicates} more than once")
+
+    # Every case, not only the ones some table shows: without this, the
+    # seven-case table in `CASES` is the only thing checking the whole map.
+    for case in cases():
+        _case(case)
 
     nodes = {node.key: node.id for node in db.scalars(select(Node))}
     keys_by_id = {node_id: key for key, node_id in nodes.items()}
@@ -308,6 +340,23 @@ def validate(db: Session) -> None:
                 f"open before {concept['introduced_by']!r} introduces it — those "
                 f"nodes would be gated with no lesson ever offered"
             )
+        # Only a section body is Markdown. A title, summary, heading or caption
+        # is escaped and shown as typed, so a backtick there reaches the learner
+        # as a backtick — eight captions did, until the owner saw them.
+        shown_as_typed = [
+            ("title", concept.get("title", "")),
+            ("summary", concept.get("summary", "")),
+            *(("heading", s.get("heading", "")) for s in concept.get("sections", [])),
+            *(("caption", t.get("caption", "")) for t in concept.get("tables", [])),
+        ]
+        for field, text in shown_as_typed:
+            marks = [mark for mark in MARKDOWN_MARKS if mark in text]
+            if marks:
+                raise AssertionError(
+                    f"concept {concept['key']!r}: the {field} {text!r} contains "
+                    f"{marks[0]!r}, but a {field} is shown as typed — only a "
+                    f"section body is Markdown"
+                )
         for spec in concept.get("tables", []):
             table(db, spec)
 

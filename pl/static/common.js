@@ -120,7 +120,7 @@ function declension(t) {
       return `
         <tr${shared ? ' class="shared"' : ""}>
           <td class="case">${escapeHtml(r.polish)}<div class="key">${escapeHtml(r.english)}</div></td>
-          <td class="q">${escapeHtml(r.questions)}</td>
+          <td class="q">${escapeHtml(r.questions)}<div class="key">${escapeHtml(r.gloss || "")}</div></td>
           <td class="form"><b>${escapeHtml(form)}</b></td>
         </tr>`;
     })
