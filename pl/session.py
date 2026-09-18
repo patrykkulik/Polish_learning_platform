@@ -81,6 +81,14 @@ MASTERY_MIN_SPAN_DAYS = 7
 #: rejected: 13 days, and a backlog of 29 to 38 against a twenty-item session.
 DAILY_NEW_CAP = 10
 
+#: New cards an extra round may introduce — a round the learner explicitly asks
+#: for after the day's session, not a reload of it. Half of a ten-item round:
+#: "Another round" re-served the words just met, because the cap was spent, and a
+#: card moves once a day, so those answers changed nothing. There is no daily
+#: ceiling on extra rounds — the owner's call, 2026-09-18 — so the backlog a big
+#: day builds is the learner's to choose; criterion 9's bound still holds.
+EXTRA_ROUND_NEW = 5
+
 #: Criterion 9's bound: how much debt may remain and still admit new material.
 #:
 #: Zero is the criterion as originally written — introduce only on a day that
@@ -560,6 +568,46 @@ def _item_referents(
     return refs
 
 
+def _extra_round_review(
+    db: Session,
+    user_id: int,
+    settings: dict,
+    started: set[tuple[str, int]],
+    sense_by_form: dict[int, int],
+) -> list[tuple[Item, set[tuple[str, int]]]]:
+    """What an extra round reviews, best first, with the cards each item scores.
+
+    Only items whose every card the learner already holds, so review introduces
+    nothing. First those whose answer will still be scored — not answered today,
+    nor advanced within `EARLY_REVIEW_COOLDOWN_DAYS` — because re-serving the
+    words just met is practice the schedule never sees; then the weakest node's
+    before the rest. Ordinary remediation cannot do this job: it draws only on
+    the weakest node, which a learner who has made no mistakes does not have.
+    """
+    now = datetime.now(UTC).replace(tzinfo=None)
+    moved = schedule.cards_advanced_since(
+        db, user_id, now - timedelta(days=schedule.EARLY_REVIEW_COOLDOWN_DAYS)
+    ) | settled_today(db, user_id, settings)
+    column = {LEXICAL: "sense_id", MORPH: "form_id", PATTERN: "pattern_id"}
+    card_id = {
+        (card.population, getattr(card, column[card.population])): card.id
+        for card in db.scalars(select(Card).where(Card.user_id == user_id))
+    }
+    weak = weakest_node(db, user_id)
+    nodes = {node.id: node for node in db.scalars(select(Node))}
+
+    ranked = []
+    for item in db.scalars(select(Item).order_by(Item.id)):
+        refs = _item_referents(nodes[item.node_id], item, sense_by_form)
+        if not refs or refs - started:
+            continue
+        counts = any(card_id[ref] not in moved for ref in refs if ref in card_id)
+        in_weakest = weak is not None and item.node_id == weak.id
+        ranked.append((not counts, not in_weakest, item, refs))
+    ranked.sort(key=lambda entry: entry[:2])
+    return [(item, refs) for _, _, item, refs in ranked]
+
+
 def weakest_node(db: Session, user_id: int, days: int = 14) -> Node | None:
     """The node with the highest error *rate* over the trailing window.
 
@@ -627,7 +675,7 @@ def _introduction_budget(db: Session, user_id: int, settings: dict) -> int:
 
 
 def build_session(
-    db: Session, user_id: int, settings: dict, limit: int = 20
+    db: Session, user_id: int, settings: dict, limit: int = 20, extra: bool = False
 ) -> tuple[list[Item], dict]:
     """Compose the day's queue: debt, then remediation, then new.
 
@@ -662,7 +710,10 @@ def build_session(
     # the whole composition rather than inside the introduction segment, because
     # every segment can create cards and the cap is named for the day, not for
     # one segment of it.
-    budget = _introduction_budget(db, user_id, settings)
+    # An extra round the learner asked for carries its own budget, whatever the
+    # day has had: the day's cap governs the session the day hands out, not the
+    # rounds a learner chooses to add after it.
+    budget = EXTRA_ROUND_NEW if extra else _introduction_budget(db, user_id, settings)
     started = _started_referents(db, user_id)
     sense_by_form = _sense_by_form(db)
     taught_words = _forms_of_taught_words(db)
@@ -825,8 +876,21 @@ def build_session(
                 if not progressed:
                     break
 
-    # 3 — remediation, filling whatever debt and introduction left over.
-    if total() < limit:
+    # 3 — remediation, filling whatever debt and introduction left over. An extra
+    # round reviews instead: see `_extra_round_review`. Ordinary sessions keep
+    # the weakest-node drill, whose pacing every measurement here was made on.
+    if extra and total() < limit:
+        covered: set[tuple[str, int]] = set()
+        for item, refs in _extra_round_review(db, user_id, settings, started, sense_by_form):
+            if total() >= limit:
+                break
+            # One item per word: two items scoring the same cards are one review
+            # served twice, and the second moves nothing.
+            if refs <= covered or not offerable(item):
+                continue
+            if add(remedial, item):
+                covered |= refs
+    elif total() < limit:
         weak = weakest_node(db, user_id)
         if weak is not None:
             for item in db.scalars(select(Item).where(Item.node_id == weak.id)):

@@ -320,5 +320,11 @@ flowchart TD
       masculine" (V01 itself teaches six feminines that do), and animacy described
       as being alive (`kurczak` is animate, `kwiat` is not). A code review of that
       round then caught the animacy fix applied to one lesson of the three, and
-      "hard" defined two ways. **Open**: the owner's re-read of the rewritten
-      prose.
+      "hard" defined two ways. **Round 2, 2026-09-18:** the owner found the
+      language too complicated, and all six lessons were rewritten in everyday
+      English — 873 words of prose where there were 1,718, short sentences,
+      grammar terms only with their meaning beside them — keeping every fact the
+      earlier rounds corrected. Every list item is written on one line: the
+      renderer ends a list at a line that does not start with `- `, so a
+      wrapped item split into an item and a stray paragraph. **Open**: the
+      owner's read of the plain version.

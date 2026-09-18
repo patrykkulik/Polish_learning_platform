@@ -1458,6 +1458,122 @@ def test_the_daily_cap_is_not_re_granted_by_asking_again(db, user):
     )
 
 
+def _spend_the_day(db, user) -> None:
+    """Take ordinary sessions until the day's new-card budget is gone."""
+    for _ in range(6):
+        picked, stats = build_session(db, user.id, SETTINGS, limit=20)
+        if stats["introduced"] == 0:
+            return
+        for item in picked:
+            answer(db, user, item)
+        _clear_debt(db)
+    pytest.fail("the day's budget never ran out")
+
+
+def test_an_extra_round_brings_new_words_once_the_day_is_spent(db, user):
+    """The learner asked for more, and more now includes new words.
+
+    "Another round" rebuilt the day's session, which by then had nothing new to
+    give — the cap was spent — so it re-served the words just met, and because a
+    card moves once a day those answers changed nothing. An extra round is an
+    explicit request: up to `EXTRA_ROUND_NEW` new cards however many the day has
+    had, and review for the rest. The owner chose no daily limit, so a second
+    extra round brings more again.
+    """
+    from pl.session import EXTRA_ROUND_NEW
+
+    read_every_concept(db, user)
+    _spend_the_day(db, user)
+    for round_number in (1, 2):
+        picked, stats = build_session(db, user.id, SETTINGS, limit=10, extra=True)
+        assert 0 < stats["introduced"] <= EXTRA_ROUND_NEW, f"extra round {round_number}"
+        assert stats["introduced_items"] < len(picked), "the rest of the round is review"
+        for item in picked:
+            answer(db, user, item)
+        _clear_debt(db)
+
+
+def test_an_extra_round_waits_while_reviews_are_overdue(db, user):
+    """Criterion 9's bound holds for extra rounds too: nothing new on a backlog."""
+    from pl.models import Attempt
+    from pl.session import DEBT_TOLERANCE
+
+    read_every_concept(db, user)
+    picked, _ = build_session(db, user.id, SETTINGS, limit=20)
+    for item in picked:
+        answer(db, user, item)
+    # Answered yesterday and overdue today — debt, not today's settled work.
+    yesterday = timedelta(days=1)
+    for attempt in db.scalars(select(Attempt).where(Attempt.user_id == user.id)):
+        attempt.created_at -= yesterday
+    cards = list(db.scalars(select(Card).where(Card.user_id == user.id)))
+    assert len(cards) > DEBT_TOLERANCE, "not enough cards to make a backlog"
+    for card in cards:
+        card.created_at -= yesterday
+        card.due_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1)
+    db.commit()
+
+    # Room to spare after the overdue cards, so the bound — not a full round —
+    # is what keeps new material out.
+    picked, stats = build_session(db, user.id, SETTINGS, limit=40, extra=True)
+    assert len(picked) < 40, "the backlog filled the round; the bound went untested"
+    assert stats["introduced"] == 0, "an extra round introduced on top of a backlog"
+
+
+def test_an_extra_round_reviews_what_a_review_would_still_move(db, user):
+    """Review that keeps words alive, not review that repeats today.
+
+    A card moves once a day, and not again within `EARLY_REVIEW_COOLDOWN_DAYS`,
+    so re-serving the words just met is practice the schedule never sees. An
+    extra round's review half prefers words met before that window — and it
+    exists without mistakes: ordinary remediation draws on the weakest node,
+    which a learner who has answered everything correctly does not have.
+
+    The words met a week ago are deliberately the *later* batch, with the higher
+    item ids: taken in id order, today's words would come first, so only the
+    preference can put last week's ahead of them.
+    """
+    from pl import schedule
+    from pl.models import Attempt
+
+    read_every_concept(db, user)
+    first, _ = build_session(db, user.id, SETTINGS, limit=20)
+    for item in first:
+        answer(db, user, item)
+    _clear_debt(db)
+    today = {card.id for card in db.scalars(select(Card).where(Card.user_id == user.id))}
+    for card in db.scalars(select(Card).where(Card.id.in_(today))):
+        card.created_at -= timedelta(days=1)  # a fresh budget for the second batch
+    db.commit()
+    last_attempt = db.scalar(select(func.max(Attempt.id)))
+
+    second, _ = build_session(db, user.id, SETTINGS, limit=20)
+    for item in second:
+        answer(db, user, item)
+    _clear_debt(db)
+    week = timedelta(days=7)
+    for attempt in db.scalars(select(Attempt).where(Attempt.id > last_attempt)):
+        attempt.created_at -= week
+    older = set()
+    for card in db.scalars(
+        select(Card).where(Card.user_id == user.id, Card.id.not_in(today))
+    ):
+        card.created_at -= week
+        older.add(card.id)
+    db.commit()
+    assert older, "the second session met no new words; the test proves nothing"
+
+    picked, stats = build_session(db, user.id, SETTINGS, limit=10, extra=True)
+    review = picked[: len(picked) - stats["introduced_items"]]
+    assert review, "an extra round with no review in it"
+    for item in review:
+        cards = schedule.cards_for_item(db, user.id, item).values()
+        assert any(card.id in older for card in cards), (
+            f"{item.prompt!r} repeats a word met today while words from last week "
+            f"were waiting for a review that would count"
+        )
+
+
 # ------------------------------------------------------- the pattern-card draw
 
 

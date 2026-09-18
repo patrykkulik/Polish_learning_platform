@@ -173,6 +173,9 @@ def _serialise(db, item: Item) -> dict:
         # Whether the client should offer a player. Never the audio itself, and
         # never the text it renders — for dictation, the sentence IS the answer.
         "has_audio": item.exercise_type in AUDIBLE and audio.available(),
+        # Whether each option can be heard. Safe where the sentence is not: the
+        # options are already on screen, so hearing one gives nothing away.
+        "options_audio": bool(item.options_json) and audio.available(),
         "node": {"key": node.key, "title": node.title, "type": node.type},
     }
 
@@ -192,21 +195,47 @@ def item_audio(item_id: int, speed: str = "normal"):
         item = db.get(Item, item_id)
         if item is None or item.exercise_type not in AUDIBLE:
             raise HTTPException(404, "no audio for this item")
-        try:
-            path = audio.synthesise(item.expected_answer, speed=speed)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-        except (subprocess.SubprocessError, OSError) as exc:
-            # A voice that vanished, an unwritable cache, a wedged child. The
-            # client cannot act on any of them, but it must be able to tell
-            # "no audio here" from "this item is broken" — and the cause has to
-            # reach the log, because the browser silently swallows a failed
-            # play() and the learner just sees a button that does nothing.
-            log.exception("synthesis failed for item %s", item_id)
-            raise HTTPException(503, "speech synthesis failed") from exc
-        return FileResponse(path, media_type="audio/mp4")
+        return _speak(item.expected_answer, speed, f"item {item_id}")
     finally:
         db.close()
+
+
+@app.get("/api/audio/{item_id}/option/{index}")
+def option_audio(item_id: int, index: int, speed: str = "normal"):
+    """One choice option, spoken, so the learner hears the word while choosing.
+
+    The option is taken from the item by position, never as text from the
+    request: the endpoint can say what the screen already shows and nothing
+    else — least of all a dictation sentence, which has no options.
+    """
+    if not audio.available():
+        raise HTTPException(503, "no speech synthesiser on this machine")
+    db = database.session()
+    try:
+        item = db.get(Item, item_id)
+        options = (item.options_json or []) if item is not None else []
+        if not 0 <= index < len(options):
+            raise HTTPException(404, "no such option")
+        return _speak(options[index], speed, f"option {index} of item {item_id}")
+    finally:
+        db.close()
+
+
+def _speak(text: str, speed: str, what: str) -> FileResponse:
+    """Synthesise `text`, or say which of two things went wrong."""
+    try:
+        path = audio.synthesise(text, speed=speed)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except (subprocess.SubprocessError, OSError) as exc:
+        # A voice that vanished, an unwritable cache, a wedged child. The
+        # client cannot act on any of them, but it must be able to tell
+        # "no audio here" from "this item is broken" — and the cause has to
+        # reach the log, because the browser silently swallows a failed
+        # play() and the learner just sees a button that does nothing.
+        log.exception("synthesis failed for %s", what)
+        raise HTTPException(503, "speech synthesis failed") from exc
+    return FileResponse(path, media_type="audio/mp4")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -215,11 +244,17 @@ def page(request: Request):
 
 
 @app.get("/api/session")
-def get_session(limit: int = 20):
+def get_session(limit: int = 20, extra: bool = False):
+    """The day's session, or with `extra` an extra round the learner asked for:
+    up to `EXTRA_ROUND_NEW` new cards whatever the day has had, review for the
+    rest. Reloading the page is not asking — only the review page's "Another
+    round" button sends it."""
     db = database.session()
     try:
         user = _user(db)
-        items, stats = composer.build_session(db, user.id, user.settings_json, limit)
+        items, stats = composer.build_session(
+            db, user.id, user.settings_json, limit, extra=extra
+        )
         return {
             "items": [_serialise(db, i) for i in items],
             "stats": stats,

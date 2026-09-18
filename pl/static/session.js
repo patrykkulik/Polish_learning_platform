@@ -42,10 +42,16 @@ function advanceRail() {
   rail.style.width = queue.length ? `${(index / queue.length) * 100}%` : "0%";
 }
 
+/* "Another round" asks for an extra round — up to five new words and review
+ * for the rest — rather than rebuilding the day's session, which by then has
+ * nothing new to give and re-serves the words just met. Carried in the URL so a
+ * lesson acknowledged mid-round re-fetches the same kind of round. */
+const EXTRA_ROUND = new URLSearchParams(location.search).has("more");
+
 async function load() {
   let data;
   try {
-    data = await request("/api/session?limit=20");
+    data = await request(EXTRA_ROUND ? "/api/session?limit=10&extra=1" : "/api/session?limit=20");
   } catch (e) {
     return fail(e.message, load);
   }
@@ -157,8 +163,13 @@ function render() {
     };
   });
   if (isChoice) {
-    stage.querySelectorAll(".choices button").forEach((b) => {
+    stage.querySelectorAll(".choices button.option").forEach((b) => {
       b.onclick = () => { b.classList.add("picked"); submit(b.dataset.value); };
+    });
+    stage.querySelectorAll(".choices button.say").forEach((b) => {
+      b.onclick = () => {
+        new Audio(`/api/audio/${item.id}/option/${b.dataset.index}`).play().catch(() => {});
+      };
     });
   }
 }
@@ -173,9 +184,18 @@ function renderAudio(item) {
     </div>`;
 }
 
+/* Each option can be heard as well as chosen. The speaker is its own button,
+ * beside the option rather than inside it, so hearing a word never submits it —
+ * and it stays live after answering, when hearing the right one is the lesson. */
 function renderChoices(item) {
   const opts = (item.options || [])
-    .map((o) => `<button data-value="${escapeAttr(o)}">${escapeHtml(o)}</button>`)
+    .map((o, i) => `
+      <div class="choice">
+        <button class="option" data-value="${escapeAttr(o)}">${escapeHtml(o)}</button>
+        ${item.options_audio
+          ? `<button type="button" class="say" data-index="${i}" title="Hear it" aria-label="Hear ${escapeAttr(o)}">🔊</button>`
+          : ""}
+      </div>`)
     .join("");
   return `<div class="choices">${opts}</div>`;
 }
@@ -226,7 +246,7 @@ function showVerdict(data) {
   go.textContent = index + 1 >= queue.length ? "Finish" : "Next";
   go.onclick = next;
   go.focus();
-  document.querySelectorAll(".choices button").forEach((b) => (b.disabled = true));
+  document.querySelectorAll(".choices button.option").forEach((b) => (b.disabled = true));
   const input = document.getElementById("answer");
   if (input) input.disabled = true;
 
@@ -293,7 +313,7 @@ async function finish() {
       ${renderUnlocks(data.unlocked || [])}
       ${renderMilestones(data.milestones)}
       <p>
-        <button class="primary" onclick="location.reload()">Another round</button>
+        <button class="primary" onclick="location.assign('/?more=1')">Another round</button>
         <a class="link" href="/progress">See your progress</a>
       </p>
     </div>

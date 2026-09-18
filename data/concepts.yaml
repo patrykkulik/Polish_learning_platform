@@ -61,57 +61,41 @@ cases:
 
 concepts:
   - key: VOCAB_GENDER
-    title: Every noun has a gender, and the gender chooses its endings
+    title: Every noun is masculine, feminine or neuter
     introduced_by: V01
     summary: >-
-      Learn the word and its gender together. Gender is not decoration: it is
-      the first thing that decides which ending a noun takes, in every case you
-      will meet.
+      Learn each word together with its gender. The gender decides how the word
+      changes later.
     sections:
-      - heading: What you are learning when you learn a word
+      - heading: How to tell the gender
         body: |
-          A Polish noun carries a gender, and you cannot use the word without
-          it. `kawa` is feminine, `sklep` is masculine, `okno` is neuter — and
-          when the sentence needs a different form, the gender is the first
-          thing that decides which ending arrives.
+          Every Polish noun is masculine, feminine or neuter. You need to know which, because the endings you add later depend on it.
 
-          Two of the three wear it openly. A word ending in `-a` is almost
-          always feminine, and a word ending in `-o` or `-e` is almost always
-          neuter.
+          The last letter usually tells you:
 
-          A word ending in a consonant is usually masculine — `sklep`, `dom`,
-          `chleb` — but you cannot always trust the ending: it depends on the
-          consonant. After `c`, `cz`, `sz`, `rz`, `ż`, `l`, `j`, or a consonant
-          with an accent (`ś`, `ć`, `ń`), the word can be either, and both kinds
-          are common: `klucz`, `lekarz` and `hotel` are masculine, while `noc`,
-          `rzecz`, `twarz`, `mysz`, `sól` and `wieś` are feminine. Those are
-          ordinary words you will meet early, so learn the gender along with
-          them. After any other consonant, the word is almost always masculine.
-      - heading: Why this matters before any grammar
+          - Ends in `-a`: almost always feminine — `kawa`.
+          - Ends in `-o` or `-e`: almost always neuter — `okno`.
+          - Ends in a consonant: usually masculine — `sklep`, `dom`, `chleb`.
+      - heading: Watch out for these endings
         body: |
-          The endings you meet later are not one rule with exceptions. They are
-          several patterns, and gender is what sorts a noun into one of them —
-          the shape of the word does much of the rest. A learner who knows
-          `sklep` but not that it is masculine has learnt half the word, and the
-          half they are missing is the half the grammar reads.
+          After `c`, `cz`, `sz`, `rz`, `ż`, `l`, `j`, or a letter with an accent (`ś`, `ć`, `ń`), the word can be masculine or feminine.
 
-          Masculine splits once more, and that split catches everybody: a
-          masculine noun for a person or an animal takes different endings from
-          one for a thing. Grammar draws that line, not biology — a chicken on
-          your plate still counts as an animal (`Kupuję kurczaka`), and a
-          flower is a thing (`Widzę kwiat`). That is a lesson of its own, later.
+          `klucz`, `lekarz` and `hotel` are masculine. `noc`, `rzecz`, `twarz`, `mysz`, `sól` and `wieś` are feminine. Learn the gender with the word.
+      - heading: One more split, later
+        body: |
+          Masculine words for people and animals (`brat`, `kot`) change differently from masculine words for things (`sklep`). It is about grammar, not about being alive: a chicken you buy to eat still counts as an animal. This gets its own lesson later.
     tables:
       - lexeme: kawa
-        caption: Feminine — the ending is -a
+        caption: Feminine — ends in -a
         cases: [nom]
       - lexeme: sklep
-        caption: Masculine — as most nouns ending in a consonant are
+        caption: Masculine — ends in a consonant
         cases: [nom]
       - lexeme: noc
-        caption: Feminine even so — after c, cz, sz, rz, l or ś the ending cannot tell you
+        caption: Feminine, even though it ends in a consonant
         cases: [nom]
       - lexeme: okno
-        caption: Neuter — the ending is -o
+        caption: Neuter — ends in -o
         cases: [nom]
 
   - key: CASES
@@ -119,279 +103,184 @@ concepts:
     introduced_by: N01
     also_taught_in: [N02]
     summary: >-
-      In Polish the ending of a word shows what the word is doing in the
-      sentence. There are seven cases, each has its own question, and the
-      ending is what answers it.
+      In Polish, the end of a word changes to show what the word is doing in the
+      sentence. Each of these forms is called a case, and there are seven.
     sections:
-      - heading: Why the ending changes at all
+      - heading: Why endings change
         body: |
-          English marks a word's job by where it stands: *the dog sees the cat*
-          and *the cat sees the dog* use the same words and mean opposite things,
-          because English reads the order.
+          In English, word order shows who does what: *the cat sees the dog* is not *the dog sees the cat*.
 
-          Polish marks the job on the word. `Kot widzi psa` and `Psa widzi kot`
-          mean the same thing — the dog is being seen in both — because `psa`
-          says "I am the object" wherever it stands. The ending carries the
-          grammar that English carries in word order, which is why Polish word
-          order is free and Polish endings are not.
-      - heading: The seven cases, and the question each answers
+          Polish shows it with endings instead. In `Kot widzi psa`, the ending of `psa` shows that the dog is the one being seen — so `Psa widzi kot` means the same thing. Word order is flexible; endings are not.
+      - heading: The seven cases
         body: |
-          Polish schoolchildren learn the cases as a list of questions, and it is
-          the most useful thing you can memorise. Ask the question, and the
-          answer is in that case.
+          Polish children learn each case with a question. Ask the question, and the answer takes that case.
 
-          | case | pytanie | it answers |
+          | case | question | used for |
           |---|---|---|
-          | mianownik | kto? co? | who or what is doing it |
-          | dopełniacz | kogo? czego? | of whom, of what — and the object of a verb with `nie` |
-          | celownik | komu? czemu? | to whom, for whom |
-          | biernik | kogo? co? | who or what is being acted on |
-          | narzędnik | (z) kim? (z) czym? | with what, and what someone *is* |
-          | miejscownik | (o) kim? (o) czym? | about it, and where it is |
+          | mianownik | kto? co? | the person or thing doing something |
+          | dopełniacz | kogo? czego? | "of", and after `nie` |
+          | celownik | komu? czemu? | "to" or "for" someone |
+          | biernik | kogo? co? | the person or thing something is done to |
+          | narzędnik | (z) kim? (z) czym? | "with", and what someone is |
+          | miejscownik | (o) kim? (o) czym? | "about", and where something is |
           | wołacz | o! | calling someone |
 
-          You have met the first already: the dictionary form is the mianownik.
-          This course teaches the rest in the order they earn their keep, not in
-          the order of the list.
-      - heading: What a declension looks like (one noun in all seven cases)
+          Mianownik is the form you find in a dictionary. The course teaches the others one at a time, the most useful first.
+      - heading: One word in all seven cases
         body: |
-          One noun, seven jobs. Nothing here is irregular — this is the ordinary
-          pattern for a feminine noun in `-a`, and the endings repeat across
-          hundreds of words.
+          This is called a declension (odmiana). Most feminine words ending in `-a` follow the same pattern as `kawa`.
     tables:
       - lexeme: kawa
-        caption: kawa — feminine, singular
+        caption: kawa — feminine
         cases: [nom, gen, dat, acc, inst, loc, voc]
       - lexeme: sklep
-        caption: sklep — masculine inanimate, singular
+        caption: sklep — masculine, a thing
         cases: [nom, gen, dat, acc, inst, loc, voc]
 
   - key: ACCUSATIVE
-    title: Biernik — the thing being acted on
+    title: Biernik — the thing you do something to
     introduced_by: N03
     also_taught_in: [N04]
     summary: >-
-      The direct object takes the accusative, and which ending you use is decided
-      by gender — including one gender that changes nothing at all.
+      Use biernik for the object of a verb: what you see, have or buy. Only some
+      words change.
     sections:
-      - heading: What the accusative is for
+      - heading: When to use it
         body: |
-          A verb like `widzieć` (to see), `mieć` (to have) or `kupować` (to buy)
-          acts on something. That something is the direct object, and Polish puts
-          it in the biernik.
-
-          The question is *kogo? co?* — whom? what? `Widzę ___` — I see *what*?
-          The answer is in the accusative.
-      - heading: Three genders, three answers
+          Verbs like `widzieć` (to see), `mieć` (to have) and `kupować` (to buy) act on something. That something goes in biernik. Its question is *kogo? co?* (whom? what?).
+      - heading: What changes
         body: |
-          - **Feminine in `-a`** swaps the `-a` for `-ę`: `kawa` → `Mam kawę`.
-            This is the ending that makes the accusative visible, and it is the
-            one you will use most.
-          - **Neuter** does nothing: `okno` → `Widzę okno`. The form you learnt
-            is the form you use.
-          - **Masculine inanimate** also does nothing: `sklep` → `Widzę sklep`.
+          - Feminine words ending in `-a` change it to `-ę`: `kawa` → `Mam kawę`.
+          - Neuter words stay the same: `Widzę okno`.
+          - Masculine words for things stay the same: `Widzę sklep`.
+          - Feminine words ending in a consonant stay the same: `Widzę mysz`.
 
-          So two of the three are free, and the feminine costs you one letter.
-          The fourth group — a masculine noun for a person or an animal — is the
-          one that catches people, and it has a lesson to itself.
-      - heading: Why the feminine changes and the others do not
+          Masculine words for people and animals work differently. They get their own lesson later.
+      - heading: Why only the -a words change
         body: |
-          A feminine noun in `-a` already ends in an ending, so the accusative
-          has something to swap: the `-a` comes off and the `-ę` goes on.
-
-          A masculine inanimate noun like `sklep` ends in the bare word itself,
-          and a neuter noun's `-o` does not move here. For those two, Polish
-          simply never made a separate object form — the nominative does both
-          jobs, and the verb tells you which one you are looking at.
-
-          Feminine nouns ending in a consonant have nothing to swap either, so
-          they do not change: `mysz` stays `mysz` in `Widzę mysz`, and `noc`
-          stays `noc`.
+          The `-a` is an ending, so Polish swaps it for `-ę`. The other groups never had a separate object form, so the dictionary form does both jobs.
     tables:
       - lexeme: kawa
-        caption: Feminine in -a — the ending moves
+        caption: Feminine -a — changes
         cases: [nom, acc]
       - lexeme: noc
-        caption: Feminine ending in a consonant — nothing moves
+        caption: Feminine, ends in a consonant — stays the same
         cases: [nom, acc]
       - lexeme: sklep
-        caption: Masculine inanimate — nothing moves
+        caption: Masculine thing — stays the same
         cases: [nom, acc]
       - lexeme: okno
-        caption: Neuter — nothing moves
+        caption: Neuter — stays the same
         cases: [nom, acc]
 
   - key: ANIMACY
-    title: A masculine noun for a person or an animal borrows its genitive
+    title: Masculine people and animals change as objects
     introduced_by: N05
     summary: >-
-      "Widzę sklep" but "Widzę kota". What decides it is whether the noun names
-      a person or an animal — a line grammar draws, not biology.
+      Widzę sklep, but Widzę kota. A masculine word for a person or an animal
+      changes when it is the object of a verb.
     sections:
       - heading: The rule
         body: |
-          A masculine noun that is animate — a person, an animal — does not use
-          its own accusative. It takes the genitive form instead, and uses it as
-          the object.
+          When a masculine word for a person or an animal is the object of a verb, it usually ends in `-a`:
 
           `kot` → `Widzę kota`. `pies` → `Widzę psa`. `brat` → `Widzę brata`.
 
-          A masculine noun that is inanimate keeps the nominative: `Widzę sklep`,
-          `Widzę komputer`. Same sentence, same gender, different ending, and
-          nothing decides it except whether the noun names a person or an animal.
-
-          That is grammar's line, not biology's. A chicken you are buying to eat
-          still counts as an animal — `Kupuję kurczaka` — while a flower, alive
-          as it is, counts as a thing: `Widzę kwiat`.
-      - heading: Why it looks like a rule with no reason
+          Masculine words for things do not change: `Widzę sklep`, `Widzę komputer`.
+      - heading: It is grammar, not biology
         body: |
-          It has one, and the table below shows it. For a masculine animate noun
-          the genitive and the accusative are not two endings that happen to look
-          alike. They are one form doing two jobs — `kota` is the genitive, and
-          the language uses that same genitive whenever the noun is an object.
-
-          The reason is old and practical. Polish word order is free because
-          endings carry the grammar, but a masculine inanimate object looks
-          exactly like a subject — `sklep` is `sklep` either way. For things,
-          context settles it. For people and animals, who can plausibly be either
-          the one acting or the one acted on, an ambiguity would be expensive —
-          so the language borrowed a form that was already distinct, and the
-          genitive was to hand.
-      - heading: What to do with it
+          A chicken you buy to eat still counts as an animal: `Kupuję kurczaka`. A flower is alive, but it counts as a thing: `Widzę kwiat`.
+      - heading: Why
         body: |
-          Ask two questions of every masculine noun: does it name a person or an
-          animal, and what is its genitive? If it does, the genitive is also the
-          object form, and you already know it.
+          Long ago, these words looked the same whether they were doing something or having something done to them. For people and animals, which can easily be either, that was confusing. So Polish borrowed another form — the genitive (dopełniacz), which you will learn later. The tables show it: for `kot`, the genitive and the object form are the same word.
     tables:
       - lexeme: kot:Sm2
-        caption: kot — an animal, so the genitive and accusative are one form
+        caption: kot — an animal, so the object form is kota
         cases: [nom, gen, acc]
       - lexeme: pies:Sm2
-        caption: pies — the stem changes as well, and both cases follow it
+        caption: pies — the middle of the word changes too
         cases: [nom, gen, acc]
       - lexeme: sklep
-        caption: sklep — a thing, so the accusative stays with the nominative
+        caption: sklep — a thing, so it stays the same
         cases: [nom, gen, acc]
 
   - key: INSTRUMENTAL
-    title: Narzędnik — with what, and what you are
+    title: Narzędnik — with whom, with what, and what you are
     introduced_by: N07
     summary: >-
-      The most regular case in the language: -em for masculine and neuter, -ą for
-      feminine, and almost nothing surprises you.
+      Use narzędnik after z (with), and to say what someone is. The endings are
+      simple: -em or -ą.
     sections:
-      - heading: Two jobs, one case
+      - heading: When to use it
         body: |
-          The narzędnik answers *(z) kim? (z) czym?* — with whom, with what — and
-          it does two things that English keeps apart.
-
-          - **The instrument or the company**: `Idę z bratem` — I am going with
-            my brother. `Piszę długopisem` — I am writing with a pen.
-          - **What someone or something *is***: `Jestem nauczycielem` — I am a
-            teacher. Here English uses *a teacher* and Polish uses the case.
+          - **Together with someone or something**: `Idę z bratem` (I'm going with my brother).
+          - **Using something**: `Piszę długopisem` (I write with a pen).
+          - **What someone is**: `Jestem nauczycielem` (I am a teacher).
       - heading: The endings
         body: |
-          Masculine and neuter take `-em`. Feminine takes `-ą`. That is the
-          whole rule, and after the accusative it will feel like a holiday.
+          Masculine and neuter words add `-em`: `brat` → `bratem`, `okno` → `oknem`. Feminine words change `-a` to `-ą`: `kawa` → `kawą`.
 
-          The only thing to watch is that a stem ending in `k` or `g` softens
-          before `-em`: `ptak` → `ptakiem`, not `ptakem`. Say it aloud and you
-          will hear why — Polish will not put `k` directly against `e`.
-      - heading: Why "I am a teacher" needs a case at all
+          Words ending in `k` or `g` add `-iem`: `ptak` → `ptakiem`. Polish does not write `-kem`.
+      - heading: I am a teacher
         body: |
-          `Jestem` links two things, and Polish marks which one is the
-          description rather than the subject. `Jestem nauczycielem` says *I am,
-          in the role of a teacher*. Put the noun in the nominative instead and
-          you have said something closer to *I am the teacher himself*, which is
-          why the case is not optional here.
+          After `jestem` (I am), the job goes in narzędnik: `Jestem nauczycielem`. After `to jest` (this is), it stays in the dictionary form: `To jest nauczyciel`.
     tables:
       - lexeme: brat
-        caption: Masculine — -em
+        caption: Masculine — adds -em
         cases: [nom, inst]
       - lexeme: ptak
-        caption: Masculine in -k — the stem softens to -kiem
+        caption: Ends in k — adds -iem
         cases: [nom, inst]
       - lexeme: kawa
-        caption: Feminine — -ą
+        caption: Feminine — -a becomes -ą
         cases: [nom, inst]
       - lexeme: okno
-        caption: Neuter — -em
+        caption: Neuter — adds -em
         cases: [nom, inst]
 
   - key: GENITIVE
-    title: Dopełniacz — the case Polish reaches for most
+    title: Dopełniacz — of, none, and after small words
     introduced_by: N08
     also_taught_in: [N09, N10]
     summary: >-
-      Negation, possession and a long list of prepositions all land here. It is
-      the case you will use most, and the one with the least regular endings.
+      Use dopełniacz after nie, to say whose something is, and after words like
+      do and bez. You will use it a lot.
     sections:
-      - heading: Three jobs you will meet in this course
+      - heading: When to use it
         body: |
-          - **After a negative.** `Mam czas` → `Nie mam czasu`. Negate a verb
-            that took the accusative and its object moves to the genitive. This
-            is not optional and it has no English equivalent.
-          - **Possession.** Polish has no `'s`. The owner goes after the thing
-            owned, in the genitive: `dom brata` — my brother's house.
-          - **After many prepositions.** `do`, `od`, `u`, `dla`, `bez`, `obok`:
-            `Idę do sklepu`, `To jest dla brata`.
-      - heading: Why negation moves the case
+          - **After a negative verb**: `Mam czas` → `Nie mam czasu` (I don't have time).
+          - **To say whose something is**: `dom brata` (my brother's house). The owner comes second.
+          - **After some prepositions**: `do`, `od`, `u`, `dla`, `bez`, `obok` — `Idę do sklepu`, `To jest dla brata`.
+      - heading: Why nie changes it
         body: |
-          A positive sentence says something exists and is acted on, so the
-          object is marked as an object. A negative sentence says no such thing
-          was acted on at all — and Polish marks that by moving the noun out of
-          the object case entirely, into the case of *absence and quantity*.
-
-          It is the same case you would use for a part of something rather than
-          the whole of it, and "none of it" is the limiting case of a part. Once
-          you hear `Nie ma` — *there is none* — as the everyday phrase it is, the
-          rest follows.
-      - heading: The endings are where the work is
+          `Nie ma` means "there is none". Polish uses dopełniacz for amounts and parts of things (`dużo kawy`, a lot of coffee), and "none" works the same way.
+      - heading: Masculine endings
         body: |
-          The genitive is the case where a noun's own history shows. Masculine
-          nouns split between `-u` and `-a` with no rule that covers every word —
-          `sklep` → `sklepu`, but `chleb` → `chleba` — and you learn them one at
-          a time.
+          Masculine words end in `-u` or `-a`, and no simple rule tells you which: `sklep` → `sklepu`, but `chleb` → `chleba`. Learn each one with the word.
+      - heading: Feminine and neuter endings
+        body: |
+          For feminine words, look at the letter before the final `-a`:
 
-          Feminine nouns are steadier, and what decides the ending is the last
-          consonant of the stem — what is left of the word when you take the
-          ending off.
+          - A soft consonant — `ć`, `ś`, `ź`, `ń`, `j`, `l`, or `ni`, `si`, `ci`, `zi` before a vowel — takes `-i`: `kuchnia` → `kuchni`, `restauracja` → `restauracji`.
+          - `k` or `g` also takes `-i`, because Polish never writes `ky` or `gy`: `książka` → `książki`.
+          - Any other consonant takes `-y`: `kawa` → `kawy`, `ulica` → `ulicy`, `praca` → `pracy`.
 
-          For this ending, Polish counts six consonants as *soft*: the four
-          written with an accent, `ć`, `ś`, `ź` and `ń`, plus `j` and `l`. Before
-          a vowel, the accented ones are spelled with an `i` instead of the
-          accent — so the `ni` in `kuchnia` is a soft `ń`, and its stem is
-          `kuchń-`. Every other consonant counts as *hard*.
-
-          A soft stem takes `-i`: `kuchnia` → `kuchni` (`kuchń` with `-i`, which
-          Polish spells with a single `i`), `restauracja` → `restauracji`. A
-          hard stem takes `-y`: `kawa` → `kawy`, `gazeta` →
-          `gazety`. That includes `c`, `cz`, `sz` and `rz`, which sound soft to
-          an English ear but count as hard here: `ulica` → `ulicy`, `praca` →
-          `pracy`.
-
-          `k` and `g` are the one thing to remember on top of that. They are
-          hard, but they still take `-i`, because Polish does not write `ky` or
-          `gy`: `książka` → `książki`, `lodówka` → `lodówki`. Neuter takes `-a`.
-
-          This is also why the course drills the genitive across so many separate
-          patterns: they are genuinely different things to learn, not one rule
-          you are failing to generalise.
+          Neuter words take `-a`: `okno` → `okna`.
     tables:
       - lexeme: sklep
-        caption: Masculine taking -u
+        caption: Masculine — -u
         cases: [nom, gen]
       - lexeme: chleb
-        caption: Masculine taking -a — same gender, different ending
+        caption: Masculine — -a
         cases: [nom, gen]
       - lexeme: kawa
-        caption: Feminine, hard stem (kaw-) — -y
+        caption: Feminine, hard consonant — -y
         cases: [nom, gen]
       - lexeme: kuchnia
-        caption: Feminine, soft stem (kuchń-) — -i
+        caption: Feminine, soft consonant — -i
         cases: [nom, gen]
       - lexeme: książka
-        caption: Feminine in -ka — -i as well, because Polish does not write ky
+        caption: Feminine, k before the -a — -i
         cases: [nom, gen]
       - lexeme: okno
         caption: Neuter — -a

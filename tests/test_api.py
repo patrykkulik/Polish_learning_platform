@@ -138,7 +138,8 @@ def test_no_item_is_labelled_with_which_option_is_right(client):
     assert items, "an empty session would pass this vacuously"
     for item in items:
         assert set(item) == {
-            "id", "exercise_type", "prompt", "gloss", "options", "has_audio", "node"
+            "id", "exercise_type", "prompt", "gloss", "options", "has_audio",
+            "options_audio", "node",
         }
 
 
@@ -255,6 +256,35 @@ def test_audio_serves_playable_bytes(client):
     assert len(response.content) > 1000
 
 
+def test_a_choice_option_is_spoken_and_nothing_else_is(client, monkeypatch):
+    """Hearing an option gives nothing away: it is already on the screen.
+
+    The endpoint speaks the item's own option by position and takes no text from
+    the request, so it cannot be made to say anything else — least of all a
+    dictation sentence, whose words are its answer.
+    """
+    http, Session = client
+    mcq = _one(Session, "mcq")
+    spoken = []
+    real = audio.synthesise
+
+    def record(text, *args, **kwargs):
+        spoken.append(text)
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(audio, "synthesise", record)
+    response = http.get(f"/api/audio/{mcq.id}/option/1")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mp4"
+    assert spoken == [mcq.options_json[1]]
+
+    assert http.get(f"/api/audio/{mcq.id}/option/{len(mcq.options_json)}").status_code == 404
+    listening = _one(Session, next(iter(AUDIBLE)))
+    assert http.get(f"/api/audio/{listening.id}/option/0").status_code == 404
+    monkeypatch.setattr(audio, "available", lambda: False)
+    assert http.get(f"/api/audio/{mcq.id}/option/0").status_code == 503
+
+
 # ---------------------------------------------------------------- submit
 
 
@@ -304,6 +334,25 @@ def test_one_answer_writes_one_attempt_and_only_the_fan_out_it_scored(client):
         assert (after.id, after.due_at, after.fsrs_state_json) == form_before, (
             "the form card was not scored, so it must not have moved"
         )
+
+
+def test_only_an_explicit_request_is_an_extra_round(client, monkeypatch):
+    """`extra` reaches the composer when asked for, and a plain reload is not
+    asking — or reloading the page would hand out five new words each time."""
+    from pl import session as composer
+
+    http, _ = client
+    seen = []
+    real = composer.build_session
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("extra"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(composer, "build_session", spy)
+    http.get("/api/session?limit=20")
+    http.get("/api/session?limit=10&extra=1")
+    assert seen == [False, True]
 
 
 def test_a_database_the_build_has_not_reached_says_what_to_run(monkeypatch):

@@ -83,6 +83,12 @@
   .choices button:hover:not(:disabled) { border-color: var(--accent); }
   .choices button:disabled { cursor: default; opacity: .55; }
   .choices button.picked { border-color: var(--accent); border-width: 2px; opacity: 1; }
+  .choices .choice { display: flex; gap: .5rem; }
+  .choices .choice .option { flex: 1; }
+  .choices button.say {
+    flex: none; width: 2.9rem; padding: 0; text-align: center;
+    font-family: inherit; font-size: 1rem; line-height: 1;
+  }
 
   .verdict { border-radius: 10px; padding: 1.1rem 1.25rem; display: none; gap: .5rem; flex-direction: column; }
   .verdict.show { display: flex; }

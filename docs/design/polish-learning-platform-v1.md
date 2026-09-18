@@ -137,7 +137,13 @@ else follows from that.
     All three move the ratio; none may move the gate.
 14. Mastery *display* decays with retrievability while the unlock gate does not move.
 15. New-card introduction is capped per day, and the cap is honoured even when the learner keeps
-    asking for more.
+    asking for more — by reloading. An extra round the learner explicitly asks for introduces up to
+    `EXTRA_ROUND_NEW` (5) more, whatever the day has had, and reviews for the rest.
+    *Amended 2026-09-18 at the owner's request, with no daily ceiling on extra rounds: "Another
+    round" rebuilt a session whose budget was spent, so it re-served the words just met, and since a
+    card moves once a day those answers changed nothing. An extra round still introduces nothing
+    past criterion 9's bound, and its review prefers words whose answer will be scored — met before
+    today and outside `EARLY_REVIEW_COOLDOWN_DAYS` — over the ones just learnt.*
 16. Content: 8 authored frames × the M1 lexeme set yields ≥ 300 items with no manual review, and every
     generated item's expected surface is a real form of its lexeme, asserted at build time.
 17. The API returns JSON; no grading logic, no expected answer and no accepted-variant set is ever
@@ -179,7 +185,7 @@ guards makes it fail. **Closed** means the behaviour is there and a test proves 
 | 12 | Closed | `tests/test_streak.py` — both conditions, freezes, absence and the timezone boundary |
 | 13 | Closed | `test_an_earned_unlock_survives_every_event_the_criterion_names` |
 | 14 | Closed | `test_mastery_display_decays_while_an_earned_gate_holds`, and the display through `/api/graph` |
-| 15 | Closed | `test_the_daily_cap_is_not_re_granted_by_asking_again`; `test_remediation_never_introduces_what_the_learner_has_not_met` |
+| 15 | Closed, as amended | `test_the_daily_cap_is_not_re_granted_by_asking_again`; `test_an_extra_round_brings_new_words_once_the_day_is_spent`; `test_an_extra_round_waits_while_reviews_are_overdue`; `test_an_extra_round_reviews_what_a_review_would_still_move` |
 | 16 | Closed | `test_content_build_produces_enough_items`; `test_a_form_the_analyser_cannot_read_back_fails_the_build` |
 | 17 | Closed | `test_no_exercise_type_carries_its_answer`, and the session payload scanned for answers |
 | 18 | Closed, as scoped | `test_a_right_answer_in_the_wrong_order_is_kept_for_the_owner`, and through `/api/submit` |
@@ -1136,6 +1142,11 @@ streak            user_id, current, longest, freezes, last_completed_on
   path on demand and a re-render at a new rate needs no migration. Left in place rather than dropped
   — removing it is a schema change with no behavioural gain — but recorded here so it is not mistaken
   for the seam. `pl/audio.py` is the seam.
+- **A choice option can be heard** (added 2026-09-18 at the owner's request):
+  `/api/audio/{item_id}/option/{index}` speaks the item's own option by position and takes no text
+  from the request, so it can say only what the screen already shows — criterion 17 holds because
+  the options are sent anyway. The dictation sentence stays behind `/api/audio/{item_id}`, where the
+  words are the answer.
 - **`error_event.slot_index`** — one submission can carry two errors at different positions. Without
   it, remediation cannot tell one error from two. Still written as a constant: multi-slot grading
   returns one diagnosis for the whole sentence, so the column is correct and not yet exercised.
