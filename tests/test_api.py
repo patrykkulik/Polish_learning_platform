@@ -275,6 +275,31 @@ def test_a_correct_answer_reports_what_it_scored(client):
     assert body["scored"], "a correct answer must move at least one card"
 
 
+def test_the_submit_endpoint_keeps_a_reordered_answer_for_review(client):
+    """Criterion 18 through the path a learner actually takes."""
+    http, Session = client
+    with Session() as db:
+        item = db.scalar(
+            select(Item).where(
+                Item.exercise_type == "free_translation",
+                Item.expected_answer == "Widzę kota",
+            )
+        )
+    body = http.post(
+        "/api/submit", json={"item_id": item.id, "answer": "Kota widzę"}
+    ).json()
+    assert body["error_class"] == "WORD_ORDER"
+
+    with Session() as db:
+        queued = db.scalars(
+            select(models.ItemVariant.accepted_answer).where(
+                models.ItemVariant.item_id == item.id,
+                models.ItemVariant.source == "queued",
+            )
+        ).all()
+    assert queued == ["kota widzę"]
+
+
 # ----------------------------------------------- criterion 14, the progress view
 
 

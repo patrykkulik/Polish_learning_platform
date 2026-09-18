@@ -25,6 +25,7 @@ from pl.models import (
     Form,
     Item,
     ItemSlot,
+    ItemVariant,
     Lexeme,
     Node,
     NodeUnlock,
@@ -243,6 +244,100 @@ def test_one_submission_produces_one_attempt_and_its_fan_out(db, user):
         select(models.ErrorEvent).where(models.ErrorEvent.attempt_id == attempt.id)
     ).all()
     assert len(reviews) == 2 and len(errors) == 1
+
+
+# ------------------------------------------------------------- criterion 18
+
+
+def _sentence(db, lemma: str, expected: str) -> Item:
+    lexeme = db.scalar(select(Lexeme).where(Lexeme.lemma == lemma))
+    for item in db.scalars(
+        select(Item).where(Item.exercise_type == "free_translation")
+    ):
+        form = db.get(Form, item.target_form_id)
+        if form and form.lexeme_id == lexeme.id and item.expected_answer == expected:
+            return item
+    raise LookupError(f"no free-translation item {expected!r}")
+
+
+def _submit(db, user, item, answer: str):
+    """Grade and record one answer, the way `/api/submit` does."""
+    from pl.api import grade_item
+
+    diagnosis = grade_item(db, item, answer)
+    attempt = _attempt(db, user, item, answer)
+    schedule.apply_diagnosis(db, user.id, item, diagnosis, attempt.id, _day_start())
+    return diagnosis
+
+
+def _queued(db, item: Item) -> list[str]:
+    return list(
+        db.scalars(
+            select(ItemVariant.accepted_answer).where(
+                ItemVariant.item_id == item.id, ItemVariant.source == "queued"
+            )
+        )
+    )
+
+
+def test_a_right_answer_in_the_wrong_order_is_kept_for_the_owner(db, user):
+    """Acceptance criterion 18, as the owner scoped it: word order only.
+
+    `Kota widzę` is good Polish that the item did not anticipate — a native
+    speaker accepts it under contrastive stress. The grader is right to call it
+    `WORD_ORDER`, because the course teaches one neutral order at A1, but the
+    answer was then discarded. It is kept, once, for the owner to judge — and
+    kept is all: a queued answer is not an accepted one.
+    """
+    from pl.api import grade_item
+
+    item = _sentence(db, "kot:Sm2", "Widzę kota")
+    assert _submit(db, user, item, "Kota widzę.").error_class is ErrorClass.WORD_ORDER
+    assert _queued(db, item) == ["kota widzę"]
+
+    _submit(db, user, item, "kota  Widzę")
+    assert _queued(db, item) == ["kota widzę"], "the same answer is queued once"
+
+    assert grade_item(db, item, "Kota widzę").error_class is ErrorClass.WORD_ORDER, (
+        "queued is not accepted: nothing promotes itself"
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "because"),
+    [
+        ("Widzę kota", "a right answer needs no judging"),
+        ("Widzę kot", "every word is real Polish, and it is still an animacy error"),
+        ("Widzę psa", "a different real word"),
+        ("Widzę", "a missing word"),
+    ],
+)
+def test_nothing_but_word_order_is_queued(db, user, answer, because):
+    """Read literally, 'every token analyses' queued 39 of the golden corpus's
+    58 mistakes — `kot` for `kota` is a real word. A mistake the grader can name
+    is not an answer the item failed to anticipate.
+
+    Asserted as *nothing but the one reordering*, not as *not this answer*: a
+    sentence diagnosed at one position narrows the diagnosis to that word, so a
+    leak would queue `kot` rather than `widzę kot` — and a check for the whole
+    sentence passed straight over it.
+    """
+    item = _sentence(db, "kot:Sm2", "Widzę kota")
+    _submit(db, user, item, answer)
+    assert set(_queued(db, item)) <= {"kota widzę"}, because
+
+
+def test_a_word_the_analyser_does_not_know_is_not_queued(db, user):
+    """The criterion's own condition: every token analyses cleanly.
+
+    A reordering holds only the expected words, so through the grader this
+    fails only for a sentence whose own words the analyser does not know. The
+    queue is for good Polish, and a word Morfeusz cannot read is no evidence of
+    that.
+    """
+    item = _sentence(db, "kot:Sm2", "Widzę kota")
+    schedule.queue_for_promotion(db, item, ErrorClass.WORD_ORDER, "kota qwxz")
+    assert "kota qwxz" not in _queued(db, item)
 
 
 def _attempt(db, user, item, answer) -> models.Attempt:

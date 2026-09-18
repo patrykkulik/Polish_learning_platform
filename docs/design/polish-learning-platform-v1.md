@@ -140,6 +140,13 @@ else follows from that.
     than discarded. **Exercised by a synthetic fixture, not by natural traffic** — M1's single-slot
     cloze admits a valid alternative only under syncretism, so the queue is expected to stay empty.
     The write path ships (spec §10 requires it from day one); the criterion is proven by construction.
+    *Scoped by the owner, 2026-09-18: **word order only.** Read literally, "every token analyses
+    cleanly" admits any mistake made of real words — `kot` for `kota` is one — and it would queue 39
+    of the golden corpus's 58 mistakes, every animacy, case, number, gender, lexical and aspect error
+    among them, which contradicts "expected to stay empty". A mistake the grader can name is not an
+    answer the item failed to anticipate; the right words in another order can be, and `Kota widzę`
+    is this document's own example. The owner chose the narrowest reading over the one that would
+    also keep a different real word or a missing one. Built as `schedule.queue_for_promotion`.*
 19. Traversing `V01 → N01` — a vocabulary node gating a grammar node, the first edge in M1's own graph
     — evaluates the gate over **lexical** cards and never divides by zero.
 
@@ -1048,7 +1055,7 @@ item              id, node_id, exercise_type, prompt, expected_answer,
 item_slot       ★ id, item_id, slot_index, expected_surface, target_form_id
                   ── UNIQUE (item_id, slot_index); multi-slot items only
                   ── target_form_id null = fixed context, set = the graded target
-item_variant      item_id, accepted_answer, source(authored|promoted)
+item_variant      item_id, accepted_answer, source(authored|promoted|queued)
 user              id, email, created_at, settings_json   ── settings_json.tz : IANA
 
 card              id, user_id, population(lexical|morph|pattern),
@@ -1516,7 +1523,13 @@ to settle an argument — it will confidently settle it the wrong way.**
 
 **Unimplemented, not merely defective**
 
-- Criterion 18's promotion queue. `item_variant` ships as dead schema.
+- ~~Criterion 18's promotion queue. `item_variant` ships as dead schema.~~ **The write path is
+  built.** A failed answer diagnosed `WORD_ORDER`, every word of which the analyser knows, is kept as
+  an `item_variant` row with `source = queued`, normalised and once per item. Nothing reads the
+  queue yet: approving a candidate, and the grader accepting what was approved, are the next step and
+  a design decision of their own — until then the owner reads the queue with SQL. `Verified:` by the
+  criterion's synthetic fixtures in `tests/test_loop.py`, and through `/api/submit` in
+  `tests/test_api.py`.
 - ~~Criterion 14's decaying mastery display.~~ **Built at this revision.** `/api/graph` returns
   `mastery` — mean current retrievability across the node's strata, which decays between sessions —
   alongside `mastered`, the latching gate, which does not. `GET /progress` renders both, with
@@ -1643,8 +1656,9 @@ to settle an argument — it will confidently settle it the wrong way.**
       by writing `node_unlock`.
 - [x] `pl/api.py` — `/api/session`, `/api/submit`, **bound to localhost**. No expected answer leaves
       the server before submission (criterion 17).
-- [ ] Promotion queue write path: failed submission, all tokens analysable → `item_variant` candidate
-      (criterion 18). **No auto-promotion at M1** — see Optional hardening.
+- [x] Promotion queue write path: failed submission, all tokens analysable → `item_variant` candidate
+      (criterion 18). **No auto-promotion at M1** — see Optional hardening. Scoped to `WORD_ORDER`
+      by the owner; candidates are written `source = queued`, never `promoted`.
 - [x] `pl/templates/session.html` + `pl/static/session.js`. No npm.
 - [x] Tests for criteria 9–19. Three carry the design's weight and should be written first:
       **11** as a direct assertion on the two-card fan-out (`sklepie` fails pattern only, `sklepa`

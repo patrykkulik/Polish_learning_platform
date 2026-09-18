@@ -206,8 +206,10 @@ class ItemVariant(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("item.id"))
     accepted_answer: Mapped[str] = mapped_column(String(96))
-    #: authored | promoted. `promoted` is how a learner's valid answer enters the
-    #: accepted set; nothing auto-promotes at M1.
+    #: authored | promoted | queued. `promoted` is how a learner's valid answer
+    #: enters the accepted set; nothing auto-promotes at M1. `queued` is a failed
+    #: answer kept for the owner to judge — see `schedule.queue_for_promotion` —
+    #: and is not accepted.
     source: Mapped[str] = mapped_column(String(16), default="authored")
 
 

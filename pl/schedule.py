@@ -31,8 +31,20 @@ from fsrs import Rating, Scheduler
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pl import morph
 from pl.domain import STRICT_ORTHOGRAPHY, Diagnosis, ErrorClass
-from pl.models import Attempt, Card, ErrorEvent, Form, Item, Node, Review, Sense
+from pl.grade.classify import tokenise
+from pl.models import (
+    Attempt,
+    Card,
+    ErrorEvent,
+    Form,
+    Item,
+    ItemVariant,
+    Node,
+    Review,
+    Sense,
+)
 
 #: Stock parameters. Optimisation needs roughly a thousand reviews and pulls
 #: torch; with one learner there is nothing to fit.
@@ -335,5 +347,47 @@ def apply_diagnosis(
                 expected=item.expected_answer,
             )
         )
+        queue_for_promotion(
+            db, item, diagnosis.error_class, db.get(Attempt, attempt_id).submitted
+        )
     db.flush()
     return applied
+
+
+#: The failures kept for the owner to judge (acceptance criterion 18). Read
+#: literally, "every token analyses cleanly" admits any mistake made of real
+#: words — `kot` for `kota` is one — and it queued 39 of the golden corpus's 58
+#: mistakes. A mistake the grader can name is not an answer the item failed to
+#: anticipate; the right words in another order can be. The owner scoped the
+#: queue to that one class.
+PROMOTION_CANDIDATES: Final = frozenset({ErrorClass.WORD_ORDER})
+
+
+def queue_for_promotion(
+    db: Session, item: Item, error_class: ErrorClass, answer: str
+) -> None:
+    """Keep a failed answer that may be good Polish, for the owner to judge.
+
+    Written as `item_variant` with `source="queued"`, never `"promoted"` — that
+    value *is* the accepted set, and nothing promotes itself. Stored normalised,
+    the form the grader compares in, and once per item: a learner who makes the
+    same reordering every day is one question for the owner, not thirty.
+
+    `answer` is the whole submission as the attempt recorded it, not
+    `Diagnosis.submitted`: a sentence diagnosed at one position carries only that
+    position's word there — `kot`, from `Widzę kot` — and a candidate for the
+    accepted set has to be the answer the learner actually gave.
+    """
+    if error_class not in PROMOTION_CANDIDATES:
+        return
+    tokens = tokenise(answer)
+    if not tokens or not all(morph.is_known(token) for token in tokens):
+        return
+    answer = " ".join(tokens)
+    already = db.scalar(
+        select(ItemVariant.id).where(
+            ItemVariant.item_id == item.id, ItemVariant.accepted_answer == answer
+        )
+    )
+    if already is None:
+        db.add(ItemVariant(item_id=item.id, accepted_answer=answer, source="queued"))
