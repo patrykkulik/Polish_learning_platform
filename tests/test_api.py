@@ -258,6 +258,76 @@ def test_audio_serves_playable_bytes(client):
 # ---------------------------------------------------------------- submit
 
 
+def test_one_answer_writes_one_attempt_and_only_the_fan_out_it_scored(client):
+    """Acceptance criterion 10, through the endpoint that writes it.
+
+    The fan-out test in `test_loop.py` inserts its attempt itself, so a submit
+    that wrote two attempts, or a review for a card the routing left alone,
+    passed every test. `kot` for `kota` scores the rule card and not the form
+    card — the mixed case, where "cards it did not score left untouched" can
+    actually be seen.
+    """
+    from pl import schedule
+    from pl.models import Attempt, Card, ErrorEvent, Form, Lexeme, Review
+
+    http, Session = client
+    with Session() as db:
+        user = ingest.ensure_user(db)
+        kot = db.scalar(select(Lexeme).where(Lexeme.lemma == "kot:Sm2"))
+        item = next(
+            i
+            for i in db.scalars(select(Item).where(Item.exercise_type == "cloze"))
+            if db.get(Form, i.target_form_id).lexeme_id == kot.id
+            and i.prompt.startswith("Widzę")
+        )
+        form_card = schedule.cards_for_item(db, user.id, item)[schedule.MORPH]
+        db.commit()
+        form_before = (form_card.id, form_card.due_at, form_card.fsrs_state_json)
+
+    body = http.post("/api/submit", json={"item_id": item.id, "answer": "kot"}).json()
+    assert body["error_class"] == "ANIMACY"
+    assert body["scored"] == {"pattern": 1}
+
+    with Session() as db:
+        attempts = db.scalars(select(Attempt)).all()
+        assert len(attempts) == 1, "one answer, one attempt"
+        reviews = db.scalars(
+            select(Review).where(Review.attempt_id == attempts[0].id)
+        ).all()
+        assert sorted(db.get(Card, r.card_id).population for r in reviews) == ["pattern"]
+        assert db.scalar(
+            select(func.count()).select_from(ErrorEvent).where(
+                ErrorEvent.attempt_id == attempts[0].id
+            )
+        ) == 1
+        after = db.get(Card, form_before[0])
+        assert (after.id, after.due_at, after.fsrs_state_json) == form_before, (
+            "the form card was not scored, so it must not have moved"
+        )
+
+
+def test_a_database_the_build_has_not_reached_says_what_to_run(monkeypatch):
+    """A server started on a database older than its code failed with a bare 500.
+
+    `create_all` runs only in the content build, so a new table is absent until
+    the build is re-run — and the session route raised SQLite's `no such table`,
+    which the page could only report as "the server returned 500". The remedy is
+    one command, so the error names it.
+    """
+    engine = create_engine(
+        "sqlite://",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    monkeypatch.setattr(
+        api.database, "session", sessionmaker(bind=engine, expire_on_commit=False)
+    )
+    response = TestClient(api.app, raise_server_exceptions=False).get("/api/session")
+    assert response.status_code == 503
+    assert "python -m pl.content.ingest" in response.json()["detail"]
+
+
 def test_submitting_an_unknown_item_is_404(client):
     http, _ = client
     assert http.post(

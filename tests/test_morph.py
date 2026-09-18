@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from pl import morph
+from pl.content.ingest import DATA
+
+#: Every lexeme the course teaches, read from the file the build reads. The
+#: round trip once covered only `M1_LEXEMES`, which was the whole set when the
+#: criterion was written and was 23 of 192 when it was next checked.
+COURSE_LEXEMES = [
+    entry["lemma"]
+    for entry in yaml.safe_load((DATA / "lexemes.yaml").read_text(encoding="utf-8"))
+]
 
 #: The lexemes M1 teaches across the nominative and accusative, plus the two
 #: adjectives and the aspect pairs the classifier needs to exercise every class.
@@ -35,13 +45,13 @@ M1_LEXEMES = [
 ]
 
 
-@pytest.mark.parametrize("lemma", M1_LEXEMES)
+@pytest.mark.parametrize("lemma", COURSE_LEXEMES)
 def test_every_generated_surface_reanalyses_to_its_lemma(lemma):
     """Acceptance criterion 3.
 
     Content is generated from the paradigm, so a surface the analyser cannot
     recognise would produce an item that can never be graded correctly. Asserted
-    over the whole M1 lexeme set before any content is authored from it.
+    over the whole lexeme set the course teaches, not only the M1 words.
     """
     assert morph.paradigm_roundtrips(lemma) == ()
 

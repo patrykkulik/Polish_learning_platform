@@ -18,11 +18,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from pl import concepts as teaching
 from pl import db as database
@@ -54,6 +55,27 @@ HERE = Path(__file__).resolve().parent
 app = FastAPI(title="Polish Learning Platform")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+
+#: What the learner is told when the database is older than the code.
+REBUILD_NEEDED = (
+    "This database was made by an older version of the app. Stop the server, "
+    "run: uv run python -m pl.content.ingest — then start it again."
+)
+
+
+@app.exception_handler(OperationalError)
+def _database_older_than_the_code(request: Request, exc: OperationalError):
+    """Name the one command that fixes a schema the build has not caught up with.
+
+    `create_all` runs only in the content build, never here, so a table or
+    column added since the database was built is simply absent until the build
+    is re-run — and the first route to touch it raised SQLite's `no such table`,
+    which the page could only report as "the server returned 500". Any other
+    database error is not this, and still fails as one.
+    """
+    if str(exc.orig).startswith(("no such table", "no such column")):
+        return JSONResponse(status_code=503, content={"detail": REBUILD_NEEDED})
+    raise exc
 
 
 class Submission(BaseModel):

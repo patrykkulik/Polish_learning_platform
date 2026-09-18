@@ -666,13 +666,36 @@ def _assert_expected_answers_are_real_forms(db: Session, items: list[Item]) -> N
     Content is regenerable, so this runs on every build rather than once. An item
     whose expected answer is not a cell of its lexeme could never be answered
     correctly, and would present to the learner as the grader being broken.
+
+    The item is compared with its form row, and the row with the analyser. The
+    first comparison alone could never fail — every answer is copied from its row
+    — so a row corrupted to a non-word built cleanly. The analyser generated the
+    row, and reading the surface back as a form of the same word is the check
+    that is independent of the build.
     """
+    read_back: dict[int, bool] = {}
     for item in items:
         if item.target_form_id is None:
             raise AssertionError(f"item {item.prompt!r} has no target form")
         form = db.get(Form, item.target_form_id)
         if form is None:
             raise AssertionError(f"item {item.prompt!r} names a missing form")
+
+        lemma = db.get(Lexeme, form.lexeme_id).lemma
+        if form.id not in read_back:
+            analyses = morph.analyses(form.surface)
+            # A lexeme held by its full identifier (`kot:Sm2`) must match it
+            # exactly: `kota` also reads as the colloquial `kot:Sm1`.
+            read_back[form.id] = (
+                lemma in {a.lemma for a in analyses}
+                if ":" in lemma
+                else lemma in {a.base_lemma for a in analyses}
+            )
+        if not read_back[form.id]:
+            raise AssertionError(
+                f"item {item.prompt!r} expects {form.surface!r}, which the "
+                f"analyser does not read as a form of {lemma!r}"
+            )
 
         if item.exercise_type in MULTI_SLOT:
             # The answer is a sentence, so the check is that the inflected

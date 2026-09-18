@@ -30,6 +30,7 @@ from pl.models import (
     Node,
     NodeUnlock,
     Pattern,
+    Review,
 )
 from pl.schedule import MORPH, PATTERN, ROUTING
 from pl.session import (
@@ -109,6 +110,30 @@ def test_content_build_produces_enough_items(db):
     assert db.scalar(select(func.count()).select_from(Item)) >= 300
 
 
+def test_a_form_the_analyser_cannot_read_back_fails_the_build():
+    """Criterion 16's "asserted at build time", made able to fail.
+
+    Every item's answer is copied from its form row, so comparing the two
+    compared the build with itself: a form row corrupted to a non-word built
+    cleanly, and would have reached the learner as an answer nobody can type.
+    The analyser is the independent source — it generated the row, and it must
+    read the surface back as a form of the same word.
+    """
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    s = sessionmaker(bind=engine, expire_on_commit=False, future=True)()
+    ingest.ingest_all(s)
+    kawa = s.scalar(select(Lexeme).where(Lexeme.lemma == "kawa"))
+    form = s.scalar(
+        select(Form).where(Form.lexeme_id == kawa.id, Form.morph_tag == "subst:sg:acc:f")
+    )
+    form.surface = "qwxzqwxz"
+    s.commit()
+    with pytest.raises(AssertionError, match=r"qwxzqwxz.*not read.*kawa"):
+        frames.build(s)
+    s.close()
+
+
 def test_every_expected_answer_is_a_real_form(db):
     """Criterion 16's second half, re-asserted over what actually landed.
 
@@ -183,8 +208,43 @@ def test_wrong_case_fails_the_rule_and_leaves_the_form_alone(db, user):
     applied = schedule.apply_diagnosis(
         db, user.id, item, diagnosis, attempt.id, _day_start()
     )
-    assert PATTERN in applied and MORPH not in applied
+    assert MORPH not in applied
+    assert applied[PATTERN] == 1, "the rule card is failed, not merely scored"
     assert cards[MORPH].due_at == before
+
+
+def test_the_named_pair_sklepie_for_sklepu_fails_only_the_rule(db):
+    """Acceptance criterion 11, first half, on the pair it names.
+
+    `sklepie` is a real locative where the genitive was wanted: the learner can
+    inflect `sklep` and chose the wrong case, so the pattern card fails — Again,
+    not merely scored — and the form card does not move at all. The ANIMACY test
+    above reaches a different routing row, so `CASE_WRONG` went through
+    `apply_diagnosis` nowhere, and failing the form card as well would have
+    broken no test.
+
+    A learner of its own: a card takes one review a day, and on this module's
+    shared learner an earlier test may already have spent it.
+    """
+    from pl.api import expected_slot
+    from pl.grade import classify
+
+    learner = _new_learner(db, "criterion-11")
+    item = _item(db, "sklep", "Nie ma")
+    assert item.expected_answer == "sklepu"
+    cards = schedule.cards_for_item(db, learner.id, item)
+    form_card = cards[MORPH]
+    before = (form_card.due_at, form_card.fsrs_state_json, form_card.reps)
+
+    diagnosis = classify(expected_slot(db, item), "sklepie")
+    assert diagnosis.error_class is ErrorClass.CASE_WRONG
+    attempt = _attempt(db, learner, item, "sklepie")
+    applied = schedule.apply_diagnosis(
+        db, learner.id, item, diagnosis, attempt.id, _day_start()
+    )
+
+    assert applied == {PATTERN: 1}, "the rule failed, and nothing else moved"
+    assert (form_card.due_at, form_card.fsrs_state_json, form_card.reps) == before
 
 
 def test_wrong_ending_fails_the_form_and_passes_the_rule(db, user):
@@ -417,6 +477,159 @@ def test_unlock_never_re_locks(db, user):
     db.commit()
 
     assert is_unlocked(db, user.id, n01), "an unlocked node must stay unlocked"
+
+
+@pytest.fixture
+def fresh_db():
+    """A curriculum of its own, for a test that edits the curriculum.
+
+    The module's `db` is shared, and a pattern added to N01 there would change
+    N01's strata for every test that runs after this one.
+    """
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    s = sessionmaker(bind=engine, expire_on_commit=False, future=True)()
+    ingest.ingest_all(s)
+    frames.build(s)
+    yield s
+    s.close()
+
+
+def _new_learner(db, name: str) -> AppUser:
+    """A learner with no history, so no earlier test has spent a card's review."""
+    learner = AppUser(
+        email=f"{name}@example.invalid",
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+        settings_json={"tz": "UTC"},
+    )
+    db.add(learner)
+    db.flush()
+    return learner
+
+
+def _earn_mastery(db, learner: AppUser, node_key: str, leave_out: int = 0) -> list[int]:
+    """Master a node through the rows its gate reads, never through its result.
+
+    Three Good reviews, the first ten days ago, and a card in the Review state
+    with a month's stability: every condition `_card_is_mastered` checks, set
+    where it checks them, on whichever population the gate reads for this node.
+    No `node_unlock` row is written here — a latch written by hand tests the
+    table, and a gate that deletes unjustified latches would rightly delete it.
+    The last `leave_out` gating referents are left unmet, and returned.
+    """
+    from fsrs import Card as FsrsCard
+    from fsrs import Rating, State
+
+    from pl.session import _gating_refs
+
+    node = db.scalar(select(Node).where(Node.key == node_key))
+    population, ref_ids = _gating_refs(db, node)
+    kept, unmet = ref_ids[: len(ref_ids) - leave_out], ref_ids[len(ref_ids) - leave_out :]
+    item = db.scalar(select(Item).where(Item.node_id == node.id))
+    now = datetime.now(UTC)
+    for ref_id in kept:
+        card = schedule.card_for(db, learner.id, population, ref_id)
+        card.stability_max = 30.0
+        card.fsrs_state_json = FsrsCard(
+            state=State.Review,
+            stability=30.0,
+            difficulty=5.0,
+            due=now + timedelta(days=29),
+            last_review=now - timedelta(days=1),
+        ).to_dict()
+        for days_ago in (10, 9, 8):
+            attempt = Attempt(
+                user_id=learner.id,
+                item_id=item.id,
+                submitted=item.expected_answer,
+                created_at=(now - timedelta(days=days_ago)).replace(tzinfo=None),
+            )
+            db.add(attempt)
+            db.flush()
+            db.add(Review(attempt_id=attempt.id, card_id=card.id, rating=int(Rating.Good)))
+    db.flush()
+    return unmet
+
+
+def _reach_n02(db, learner: AppUser, leave_out: int = 0) -> list[int]:
+    """V01 mastered opens N01; N01 mastered opens N02 — both through the gate."""
+    _earn_mastery(db, learner, "V01")
+    evaluate_unlocks(db, learner.id)
+    unmet = _earn_mastery(db, learner, "N01", leave_out=leave_out)
+    evaluate_unlocks(db, learner.id)
+    return unmet
+
+
+def test_an_earned_unlock_survives_every_event_the_criterion_names(fresh_db):
+    """Acceptance criterion 13, with the latch earned rather than inserted.
+
+    The test above writes the `node_unlock` row itself and reads it back, which a
+    gate that re-evaluated mastery on every read would pass as well. Here N02 is
+    unlocked by `evaluate_unlocks` because N01 was mastered, and each event the
+    criterion names is applied in turn with the gate evaluated again after it:
+    a lapse, a card for a stratum not yet met, and a curriculum edit adding
+    patterns to the prerequisite. The last one does take N01's mastery away —
+    asserted, so the latch is shown holding against a gate that really moved.
+    """
+    from fsrs import Rating
+
+    db = fresh_db
+    learner = _new_learner(db, "criterion-13")
+    n01 = db.scalar(select(Node).where(Node.key == "N01"))
+    n02 = db.scalar(select(Node).where(Node.key == "N02"))
+    (unmet,) = _reach_n02(db, learner, leave_out=1)
+    assert is_mastered(db, learner.id, n01), "four strata of five should master N01"
+    assert is_unlocked(db, learner.id, n02), "the latch was not earned"
+
+    mastered_card = db.scalar(
+        select(Card).where(Card.user_id == learner.id, Card.population == PATTERN)
+    )
+    attempt = _attempt(db, learner, db.scalar(select(Item).where(Item.node_id == n01.id)), "x")
+    schedule.apply_rating(db, mastered_card, Rating.Again, attempt.id)
+    evaluate_unlocks(db, learner.id)
+    assert is_unlocked(db, learner.id, n02), "a lapse re-locked the node"
+
+    schedule.card_for(db, learner.id, PATTERN, unmet)
+    evaluate_unlocks(db, learner.id)
+    assert is_unlocked(db, learner.id, n02), "a new card for an unmet stratum re-locked it"
+
+    for index in range(10):
+        db.add(Pattern(node_id=n01.id, rule_key=f"criterion-13-{index}", paradigm_class="edit"))
+    db.flush()
+    assert not is_mastered(db, learner.id, n01), "the edit should move N01's gate"
+    evaluate_unlocks(db, learner.id)
+    assert is_unlocked(db, learner.id, n02), "a curriculum edit re-locked the node"
+
+
+def test_mastery_display_decays_while_an_earned_gate_holds(fresh_db):
+    """Acceptance criterion 14, with a gate that had something to lose.
+
+    `test_api.py` shows the display falling over four months away, but the node
+    it reads was never unlocked, so its "the gate did not move" compared false
+    with false. Here N01 is mastered and N02 latched before the months pass.
+    """
+    from pl.session import node_mastery
+
+    db = fresh_db
+    learner = _new_learner(db, "criterion-14")
+    n01 = db.scalar(select(Node).where(Node.key == "N01"))
+    n02 = db.scalar(select(Node).where(Node.key == "N02"))
+    _reach_n02(db, learner)
+    before = node_mastery(db, learner.id, n01)["retention"]
+    assert is_mastered(db, learner.id, n01) and is_unlocked(db, learner.id, n02)
+
+    for card in db.scalars(select(Card).where(Card.user_id == learner.id)):
+        state = dict(card.fsrs_state_json)
+        for field in ("last_review", "due"):
+            state[field] = (
+                datetime.fromisoformat(state[field]) - timedelta(days=120)
+            ).isoformat()
+        card.fsrs_state_json = state
+    db.flush()
+
+    assert node_mastery(db, learner.id, n01)["retention"] < before, "the display did not decay"
+    assert is_mastered(db, learner.id, n01), "four months away moved the gate"
+    assert is_unlocked(db, learner.id, n02), "four months away re-locked a node"
 
 
 def test_mastery_gate_uses_the_population_the_node_type_implies(db, user):

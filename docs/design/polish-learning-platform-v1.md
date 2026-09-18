@@ -118,8 +118,14 @@ else follows from that.
 
 ### M1 — the learning loop
 
-9. A daily session composes in the order **debt → remediation → new**, and introduces no new cards
-   while any card is overdue.
+9. A daily session is served in the order **debt → remediation → new**, composed debt → new →
+   remediation, and introduces nothing while more than `DEBT_TOLERANCE` (5) cards are due today.
+   *Amended 2026-09-18: as first written this read "composes in the order debt → remediation → new,
+   and introduces no new cards while any card is overdue". Both clauses were changed deliberately
+   and by measurement, and the criterion was not updated with them: composed in the order it is
+   served, remediation starved introduction from day two (§"Session composition"); with no tolerance
+   one overdue card shut introduction for the day, and the learner met 123 items where the bound of
+   five meets 224 (§"Known defects").*
 10. One submission produces exactly one `attempt` row, N `review` rows for the cards it scored, and M
     `error_event` rows — all sharing the attempt, with cards it did not score left untouched.
 11. `sklepie` for `sklepu` fails the pattern card and leaves the morph card's schedule unchanged;
@@ -149,6 +155,35 @@ else follows from that.
     also keep a different real word or a missing one. Built as `schedule.queue_for_promotion`.*
 19. Traversing `V01 → N01` — a vocabulary node gating a grammar node, the first edge in M1's own graph
     — evaluates the gate over **lexical** cards and never divides by zero.
+
+### Status — audited 2026-09-18
+
+Every criterion was read clause by clause against the code, and every test that claims one was read
+to see whether it could fail. Six could not; each was rewritten until removing the behaviour it
+guards makes it fail. **Closed** means the behaviour is there and a test proves it.
+
+| # | Status | Proven by |
+|---|---|---|
+| 1 | **Open** | Loads on arm64 macOS. `uv.lock` pins a `manylinux_2_28_x86_64` wheel, but nothing has loaded it on Linux. |
+| 2 | Closed | `test_every_tag_in_the_m1_paradigms_parses`; `test_unknown_pos_raises_rather_than_yielding_a_null_feature` |
+| 3 | Closed | `test_every_generated_surface_reanalyses_to_its_lemma`, over all 192 lexemes (was 23) |
+| 4 | Closed | `test_golden_corpus_meets_the_gate` — 64 of 65, weakest class `CASE_WRONG` 85.7% |
+| 4b | Closed | `test_reverse_fold_is_never_orthographic` and the corpus's `stółu`; `stołowi` for `stołu` checked directly — `CASE_WRONG` |
+| 5 | Closed | `test_every_diagnosis_produces_a_message`; `test_message_names_the_grammatical_decision_not_the_strings` |
+| 6 | Closed | `test_animacy_is_not_reported_as_a_generic_case_error` |
+| 7 | Closed | `test_dropped_ogonek_landing_on_a_real_form_is_a_case_error` |
+| 8 | Closed | `test_dropped_ogonek_landing_on_no_form_is_a_spelling_slip`; `test_orthography_does_not_fail_the_grammar_card` |
+| 9 | Closed, as amended | `test_debt_past_the_bound_stops_anything_new`; `test_a_small_backlog_does_not_stop_the_curriculum_opening` |
+| 10 | Closed | `test_one_answer_writes_one_attempt_and_only_the_fan_out_it_scored`, through `/api/submit` |
+| 11 | Closed | `test_the_named_pair_sklepie_for_sklepu_fails_only_the_rule`; `test_wrong_ending_fails_the_form_and_passes_the_rule` |
+| 12 | Closed | `tests/test_streak.py` — both conditions, freezes, absence and the timezone boundary |
+| 13 | Closed | `test_an_earned_unlock_survives_every_event_the_criterion_names` |
+| 14 | Closed | `test_mastery_display_decays_while_an_earned_gate_holds`, and the display through `/api/graph` |
+| 15 | Closed | `test_the_daily_cap_is_not_re_granted_by_asking_again`; `test_remediation_never_introduces_what_the_learner_has_not_met` |
+| 16 | Closed | `test_content_build_produces_enough_items`; `test_a_form_the_analyser_cannot_read_back_fails_the_build` |
+| 17 | Closed | `test_no_exercise_type_carries_its_answer`, and the session payload scanned for answers |
+| 18 | Closed, as scoped | `test_a_right_answer_in_the_wrong_order_is_kept_for_the_owner`, and through `/api/submit` |
+| 19 | Closed | `test_mastery_gate_uses_the_population_the_node_type_implies`; `test_a_diligent_learner_reaches_the_grammar` |
 
 ---
 
@@ -1542,10 +1577,21 @@ to settle an argument — it will confidently settle it the wrong way.**
 - ~~`pl/streak.py` has no tests, so criterion 12 is unasserted.~~ `tests/test_streak.py` covers both
   conditions, the freeze arithmetic, the absence reckoning and the timezone boundary. `pl/api.py` now
   has thirteen tests, covering criteria 17 and 14 and the audio endpoint's failure modes.
-- Criterion 13's unlock test inserts the latch row by hand and reads it back; criterion 16's
-  assertion compares a row to itself — `item.expected_answer` was assigned from `form.surface` at
-  build time, so checking one against the other cannot fail. Both builders now run it, which makes
-  the check uniform without making it stronger.
+- ~~Criterion 13's unlock test inserts the latch row by hand and reads it back; criterion 16's
+  assertion compares a row to itself.~~ **Both fixed 2026-09-18, with four more criteria whose tests
+  could not fail.** Criterion 16's build check now also asks the analyser to read each answer back as
+  a form of its word, and a form row corrupted to a non-word fails the build — it built cleanly
+  before. Criterion 13's latch is earned through `evaluate_unlocks` from mastered cards, and a lapse,
+  a card for an unmet stratum and a curriculum edit are applied in turn; a gate that deleted latches
+  once mastery lapsed passed the old test and fails the new one. Criterion 14's "the gate does not
+  move" read a node that was never unlocked, so it compared false with false; criterion 11's named
+  pair `sklepie`/`sklepu` was never run through the routing; criterion 10's "exactly one attempt"
+  was never counted through the endpoint; criterion 3's round trip covered 23 of 192 lexemes. Each
+  test now fails when the behaviour it guards is removed.
+- **A root node is never latched**, so a curriculum edit that gave a prerequisite to a node that
+  had none would lock it. Found by the same audit and not fixed: latching roots would make every new
+  learner look mid-course to the teaching surface's reconciliation, which reads "has an unlock row"
+  as "was taught before lessons existed". A design decision, not a gap.
 - The suite runs on SQLite only, and the schema uses generic `JSON` where Postgres wants `JSONB`.
 - Alembic is deferred; `pl/db.py` uses `create_all()`.
 

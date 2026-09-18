@@ -49,8 +49,12 @@ grammar lesson for every new learner.
 3. A table shows syncretism rather than hiding it: `kot`'s `gen.acc` cell appears
    in both the genitive and accusative rows, which is what "the accusative
    borrows the genitive" *means*.
-4. `GET /api/session` carries at most one unread lesson, for the node the session
-   would otherwise introduce from next.
+4. `GET /api/session` carries at most one unread lesson: the first unread concept
+   among unlocked nodes, in node order. *Amended 2026-09-18: first written as
+   "for the node the session would otherwise introduce from next". §Design
+   Choices settled on node order and the wording was not updated; the two cannot
+   differ in practice, because every open lesson is read, one after another,
+   before the node behind it introduces anything.*
 5. The introduction segment offers no new item from a node whose concept is
    unread. Debt and remediation are unaffected: a card the learner already holds
    still comes back.
@@ -66,6 +70,20 @@ grammar lesson for every new learner.
    twelve seeds stay within the range measured today.
 10. Reading a lesson does not count toward the daily goal, and writes no card,
     review or attempt.
+
+**Status — audited 2026-09-18: all ten closed.** 1–2
+`test_the_build_accepts_the_concepts_as_authored`,
+`test_a_concept_naming_a_node_the_graph_lacks_is_refused`,
+`test_a_table_cell_that_is_not_a_real_form_is_refused`; 3
+`test_the_animacy_table_shows_one_form_in_two_rows`; 4 and 6
+`test_a_session_carries_one_lesson_until_it_is_acknowledged`,
+`test_one_lesson_is_offered_at_a_time_in_node_order`; 5 and 6
+`test_an_unread_lesson_withholds_new_material_and_nothing_else`; 7
+`test_a_concept_the_learner_has_not_reached_carries_no_prose`; 8
+`test_the_build_reconciles_a_learner_who_was_mid_course`; 9 by measurement,
+twelve seeds × ninety days, §Validation Performed; 10
+`test_a_session_carries_one_lesson_until_it_is_acknowledged`, which counts the
+attempt, review and card rows a reading leaves behind.
 
 ## Design Choices
 
@@ -248,7 +266,9 @@ flowchart TD
   rule", while `sklep` does not. `Verified:` in the session step and the grammar
   page.
 - 309 tests pass, 15 of them new. After the review fixes, **324 pass**; after
-  the owner's first review and the review of that, **332 pass**.
+  the owner's first review and the review of that, **332 pass**; after the
+  acceptance-criteria audit, **514** — 169 of them the round trip widened from 23
+  lexemes to all 192.
 - **The review fixes left pacing where it was.** Seed 7 over ninety days: 502
   items, 10 nodes, streak advanced on 87 days, before the fixes and after.
   `Verified:` by rerunning the simulator.
@@ -283,11 +303,13 @@ flowchart TD
       `test_the_build_accepts_the_concepts_as_authored`.
 - [x] `GET /api/concepts/{key}` for a locked concept carries no prose —
       `test_a_concept_the_learner_has_not_reached_carries_no_prose`.
-- [ ] Running the server against a database where the build was not re-run fails
-      with a clear error rather than a 500 on the session route. **Not checked**:
-      the failure mode is SQLite's `no such table`, surfacing as a 500 on
-      `/api/session`. Making it a clear error is a change this design does not
-      contain.
+- [x] Running the server against a database where the build was not re-run fails
+      with a clear error rather than a 500 on the session route. Built
+      2026-09-18 at the owner's request: SQLite's `no such table` or `no such
+      column` is answered with a 503 naming the command to run, and the session
+      page shows it — `test_a_database_the_build_has_not_reached_says_what_to_run`,
+      and verified against a server started with no database built. Other
+      database errors still fail as themselves.
 - [ ] The owner reviews the authored prose and case questions for all six
       concepts, as with the sentence corpus. **Round 1 done**: eleven blocks
       flagged — a vague title, the case questions shown only in Polish, three
