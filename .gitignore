@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 audio-cache/
+# The published content ledger is committed: learner rows on phones point at its
+# ids. See scripts/build_site.py.
+!publish/content.db
+_site/

@@ -94,7 +94,7 @@ function renderLesson(lesson) {
       ${sections}
       ${tables}
       <p>
-        <a class="link" href="/grammar/${encodeURIComponent(lesson.key)}">Keep this page — it stays in the grammar</a>
+        <a class="link" href="grammar/${encodeURIComponent(lesson.key)}">Keep this page — it stays in the grammar</a>
       </p>
     </div>
     <p>
@@ -157,19 +157,14 @@ function render() {
   }
   document.getElementById("go").onclick = () => submit(input ? input.value : "");
   stage.querySelectorAll(".play").forEach((b) => {
-    b.onclick = () => {
-      const player = new Audio(`/api/audio/${item.id}?speed=${b.dataset.speed}`);
-      player.play().catch(() => {});
-    };
+    b.onclick = () => playAudio(`/api/audio/${item.id}?speed=${b.dataset.speed}`);
   });
   if (isChoice) {
     stage.querySelectorAll(".choices button.option").forEach((b) => {
       b.onclick = () => { b.classList.add("picked"); submit(b.dataset.value); };
     });
     stage.querySelectorAll(".choices button.say").forEach((b) => {
-      b.onclick = () => {
-        new Audio(`/api/audio/${item.id}/option/${b.dataset.index}`).play().catch(() => {});
-      };
+      b.onclick = () => playAudio(`/api/audio/${item.id}/option/${b.dataset.index}`);
     });
   }
 }
@@ -313,8 +308,8 @@ async function finish() {
       ${renderUnlocks(data.unlocked || [])}
       ${renderMilestones(data.milestones)}
       <p>
-        <button class="primary" onclick="location.assign('/?more=1')">Another round</button>
-        <a class="link" href="/progress">See your progress</a>
+        <button class="primary" onclick="location.assign('./?more=1')">Another round</button>
+        <a class="link" href="progress">See your progress</a>
       </p>
     </div>
   `;

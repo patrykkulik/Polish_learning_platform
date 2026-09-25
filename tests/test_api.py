@@ -205,7 +205,7 @@ def test_the_grammar_is_reachable_from_every_page(client):
     surface was designed to remove."""
     http, _ = client
     for page in ("/", "/progress"):
-        assert 'href="/grammar"' in http.get(page).text, f"{page} has no way to the grammar"
+        assert 'href="grammar"' in http.get(page).text, f"{page} has no way to the grammar"
 
 
 # ---------------------------------------------------------------- audio
@@ -545,7 +545,7 @@ def test_the_progress_page_is_served_and_consumes_the_graph(client):
     http, _ = client
     page = http.get("/progress")
     assert page.status_code == 200
-    assert "/static/progress.js" in page.text
+    assert "static/progress.js" in page.text
 
 
 # ------------------------------------------------------- the streak is server-side

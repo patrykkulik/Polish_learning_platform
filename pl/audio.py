@@ -72,6 +72,23 @@ def _installed_voices() -> set[str]:
     }
 
 
+#: On a phone, whether it has a Polish voice of its own; None everywhere else,
+#: where the local synthesiser is probed. See `use_device_voice`.
+_device_voice: bool | None = None
+
+
+def use_device_voice(present: bool | None) -> None:
+    """Speak with the device's own voice: `present` says whether it has one.
+
+    A phone speaks through the browser, not through `say`, so what it can say
+    is decided by its voice list and never by probing this machine. None
+    returns to the probe.
+    """
+    global _device_voice
+    _device_voice = present
+    available.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def available() -> bool:
     """Whether speech can be produced on this machine at all.
@@ -81,8 +98,12 @@ def available() -> bool:
     it renders a player, then fails inside a request where the client swallows
     the error and the learner gets a button that does nothing forever.
 
+    On a phone the answer is the phone's, set by `use_device_voice`.
+
     Memoised because it spawns a process; `available.cache_clear()` resets it.
     """
+    if _device_voice is not None:
+        return _device_voice
     if shutil.which(ENGINE) is None:
         return False
     if VOICE not in _installed_voices():

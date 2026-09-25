@@ -13,7 +13,7 @@ function fail(message) {
   main.innerHTML = `
     <div class="empty">
       <p>${escapeHtml(message)}</p>
-      <p><a class="link" href="/progress">Try again</a></p>
+      <p><a class="link" href="progress">Try again</a></p>
     </div>`;
 }
 

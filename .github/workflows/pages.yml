@@ -1,0 +1,54 @@
+# The static site: the course on a phone, served by GitHub Pages.
+#
+# The content ledger (publish/content.db), its word list and its notice are built
+# on the owner's Mac, where Morfeusz works, and committed. This job only checks
+# that no published id changes meaning and assembles the site, so it needs no
+# Morfeusz — just Python and PyYAML. See scripts/build_site.py.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time: two checked against the same live ledger could each pass.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: pages
+        uses: actions/configure-pages@v6
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install pyyaml
+
+      # Against what learners actually have: the ledger the live site.json names.
+      - name: Check that every published id still names the same row
+        run: python scripts/build_site.py check-live "${{ steps.pages.outputs.base_url }}"
+
+      - name: Assemble the site
+        run: python scripts/build_site.py assemble --base "${{ steps.pages.outputs.base_path }}/" --out _site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

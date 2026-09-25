@@ -13,7 +13,7 @@ function fail(message) {
   main.innerHTML = `
     <div class="empty">
       <p>${escapeHtml(message)}</p>
-      <p><a class="link" href="/grammar">Back to the grammar</a></p>
+      <p><a class="link" href="grammar">Back to the grammar</a></p>
     </div>`;
 }
 
@@ -23,7 +23,7 @@ function renderConcept(c) {
       <section>
         <h2>${escapeHtml(c.title)}</h2>
         <p class="sub">This opens when you reach ${escapeHtml(c.key)}. The course has not taught it yet.</p>
-        <p><a class="link" href="/grammar">All concepts</a></p>
+        <p><a class="link" href="grammar">All concepts</a></p>
       </section>`;
   }
   const sections = (c.sections || [])
@@ -42,7 +42,7 @@ function renderConcept(c) {
       <p class="sub">${escapeHtml(c.summary || "")}</p>
       ${sections}
       ${tables}
-      <p style="margin-top:1.5rem"><a class="link" href="/grammar">All concepts</a></p>
+      <p style="margin-top:1.5rem"><a class="link" href="grammar">All concepts</a></p>
     </section>`;
 }
 
@@ -59,7 +59,7 @@ function renderIndex(concepts) {
         ${c.summary ? `<p>${escapeHtml(c.summary)}</p>` : ""}
         <p class="key">${escapeHtml(c.key)} · introduced at ${escapeHtml(c.introduced_by)}</p>`;
       return `<div class="concept${c.open ? "" : " shut"}">${
-        c.open ? `<a href="/grammar/${encodeURIComponent(c.key)}">${inner}</a>` : inner
+        c.open ? `<a href="grammar/${encodeURIComponent(c.key)}">${inner}</a>` : inner
       }</div>`;
     })
     .join("");
@@ -72,7 +72,11 @@ function renderIndex(concepts) {
 }
 
 async function load() {
-  const key = decodeURIComponent(location.pathname.replace(/^\/grammar\/?/, ""));
+  // Read relative to the page's <base>: "/" on the local server, the site's path
+  // on GitHub Pages, which also serves a concept page as a folder, "KEY/".
+  const base = new URL(document.baseURI).pathname;
+  const path = location.pathname.startsWith(base) ? location.pathname.slice(base.length) : location.pathname;
+  const key = decodeURIComponent(path.replace(/^grammar\/?/, "").replace(/\/$/, ""));
   try {
     if (key) {
       main.innerHTML = renderConcept(await request(`/api/concepts/${encodeURIComponent(key)}`));

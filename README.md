@@ -67,7 +67,7 @@ needs no model — every check is a morphological or arithmetic fact. The
 generation stage is authored offline and committed as `data/sentences.yaml`,
 which is what `item.source` was declared for: the runtime holds no API key and
 makes no network call. Speech comes from the local Polish voice at two speeds,
-cached to disk.
+cached to disk — and on the static site, from the phone's own Polish voice.
 
 Not built: blob storage and a CDN (deployment concerns, not development ones);
 the React PWA (deferred — no capability gain over the current page).
@@ -247,6 +247,9 @@ learner, with items met, nodes opened and the daily cap identical.
 uv sync && uv run pytest
 ```
 
+The suite also runs the phone's JavaScript under Node (23 or later; no npm), and
+fails without it.
+
 Build the curriculum and run the app:
 
 ```bash
@@ -355,9 +358,20 @@ pl/content/frames.py  frames x lexemes -> items
 pl/schedule.py        FSRS, and the error-class -> card routing table
 pl/session.py         debt -> remediation -> new, and the unlock gate
 pl/streak.py          both conditions, in the learner's own timezone
-pl/api.py             JSON API; grading never runs in the browser
+pl/course.py          every route's logic, no web framework; grading runs here
+pl/api.py             pl.course over HTTP for the local app; grading stays off the page
+pl/device.py          pl.course in-process: the phone's API, as the port must answer it
 pl/content/validate.py  the pipeline's automated stage
 pl/audio.py           the only module that knows how speech is made
+
+pl/static/course/     the runtime ported to JavaScript for the static site, one
+                      module per Python module; held to the Python by
+                      tests/test_parity.py
+pl/static/device.js   boots it on a phone, keeps the database in IndexedDB
+pl/static/vendor/     sql.js 1.14.2 (MIT), SQLite in the browser
+scripts/build_site.py the content ledger (on the Mac) and the site (in CI)
+publish/              the committed ledger, word list and dictionary notice
+tests/js/             Node unit tests, and replay.mjs for the parity tests
 
 data/lexemes.yaml     192 lexemes — 174 nouns and 18 verbs in 9 aspect pairs
 data/nodes.yaml       the skill DAG — 15 nodes

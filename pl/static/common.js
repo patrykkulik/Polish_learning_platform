@@ -47,6 +47,14 @@ async function request(url, options) {
   return res.json();
 }
 
+/* Sound for the page's play buttons, from the local server's synthesiser. On a
+ * phone, device.js replaces this with the phone's own voice, which has to start
+ * inside the tap that asked for it — so the buttons call this directly, never
+ * after awaiting anything. A sound that fails is swallowed, as it always was. */
+function playAudio(url) {
+  new Audio(url).play().catch(() => {});
+}
+
 /* Lessons are rendered in two places — the session step that teaches a
  * concept and the grammar page that keeps it — so their renderer lives here
  * beside `escapeHtml`, for the reason that one does.

@@ -27,10 +27,11 @@ needs_engine = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _clear_probe():
-    """`available()` memoises its voice probe; tests must not inherit it."""
-    audio.available.cache_clear()
+    """`available()` memoises its voice probe; tests must not inherit it, nor
+    a phone's voice. Setting the flag clears the probe too."""
+    audio.use_device_voice(None)
     yield
-    audio.available.cache_clear()
+    audio.use_device_voice(None)
 
 
 # ------------------------------------------------------- runs everywhere
@@ -50,6 +51,23 @@ def test_availability_requires_the_voice_not_just_the_binary(monkeypatch):
     audio.available.cache_clear()
     monkeypatch.setattr(audio, "_installed_voices", lambda: {audio.VOICE, "Alex"})
     assert audio.available() is True
+
+
+def test_a_phones_own_voice_decides_whether_it_can_speak(monkeypatch):
+    """A phone speaks through the browser, so its own voice list decides, never
+    this machine's synthesiser — in either direction, and at once."""
+    monkeypatch.setattr(audio.shutil, "which", lambda _: "/usr/bin/say")
+    monkeypatch.setattr(audio, "_installed_voices", lambda: {audio.VOICE})
+    assert audio.available() is True  # probed, and cached
+
+    audio.use_device_voice(False)
+    assert audio.available() is False
+    audio.use_device_voice(True)
+    monkeypatch.setattr(audio.shutil, "which", lambda _: None)
+    assert audio.available() is True
+
+    audio.use_device_voice(None)
+    assert audio.available() is False  # the probe again: no binary now
 
 
 def test_availability_is_false_without_the_binary(monkeypatch):

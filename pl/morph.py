@@ -9,19 +9,32 @@ Two operations matter. `analyse` returns the segmentation lattice, used only to
 ask whether a submitted string is a word at all. `forms` returns a lexeme's full
 paradigm by synthesis, which is what populates `ExpectedSlot` and therefore what
 the error classifier actually searches.
+
+On a phone there is no Morfeusz: it is a native library with no WebAssembly
+build. `analyse` then answers from a word list built here, at build time, from
+Morfeusz's own analyses of every word the course contains — see `lexicon` and
+`use_lexicon`. `forms` and everything built on it stay Morfeusz-only; they run
+only in the content build.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
-
-import morfeusz2
+from typing import TYPE_CHECKING
 
 from pl.domain import Form
 from pl.tags import IGN, MorphTag, parse
 
+if TYPE_CHECKING:
+    import morfeusz2
+
 _instance: morfeusz2.Morfeusz | None = None
+
+#: surface -> [[lemma, tag], ...], in Morfeusz's own order. Set only on a phone,
+#: by `use_lexicon`; everywhere else `analyse` asks Morfeusz.
+_lexicon: dict[str, list[list[str]]] | None = None
 
 
 def _morfeusz() -> morfeusz2.Morfeusz:
@@ -29,10 +42,13 @@ def _morfeusz() -> morfeusz2.Morfeusz:
 
     Loading the dictionary is the expensive part, so one instance is reused. It
     is created on first use rather than at import so that `pl.tags` and
-    `pl.domain` stay importable without paying for it.
+    `pl.domain` stay importable without paying for it — and imported on first
+    use too, so that this module is importable where Morfeusz does not exist.
     """
     global _instance
     if _instance is None:
+        import morfeusz2
+
         _instance = morfeusz2.Morfeusz(generate=True)
     return _instance
 
@@ -58,11 +74,70 @@ def analyse(text: str) -> tuple[Edge, ...]:
     interpretations (`mamy` is both `mieć` and `mama`), and segmentation itself
     is ambiguous (`zrobiłbym` splits into `zrobił` + `by` + `m`). Grading never
     disambiguates it — it asks whether a matching path exists.
+
+    With a word list in use, a word the list holds gets exactly the readings
+    Morfeusz gave it at build time, and any other word gets none: it is read as
+    not a Polish word. That is the phone's one grading difference, and it only
+    reaches a real word outside the course.
     """
+    if _lexicon is not None:
+        return tuple(
+            Edge(start=0, end=1, form=Form(surface=text, lemma=lemma, tag=parse(tag)))
+            for lemma, tag in _lexicon.get(text.casefold(), ())
+        )
+    return _analyse_with_morfeusz(text)
+
+
+def _analyse_with_morfeusz(text: str) -> tuple[Edge, ...]:
     return tuple(
         Edge(start=start, end=end, form=_to_form(interp))
         for start, end, interp in _morfeusz().analyse(text)
     )
+
+
+def lexicon(lemmas: Iterable[str], surfaces: Iterable[str]) -> dict[str, list[list[str]]]:
+    """The word list a phone grades with, in place of the analyser.
+
+    Every form Morfeusz generates for `lemmas`, plus every one of `surfaces` —
+    the tokens of the built content — mapped to Morfeusz's own `analyses`, in
+    its own order. Both sets are needed: generation misses what only analysis
+    produces (`byłem` is `był` + `em`), and the order is what `explain` names
+    as "a form of X", so it is taken from analysis rather than rebuilt.
+
+    Always asks Morfeusz, even where a word list is already in use.
+    """
+    words = {form.surface.casefold() for lemma in lemmas for form in forms(lemma)}
+    words |= {surface.casefold() for surface in surfaces}
+    table: dict[str, list[list[str]]] = {}
+    for word in sorted(words):
+        readings = [
+            [edge.form.lemma, edge.form.tag.raw]
+            for edge in _analyse_with_morfeusz(word)
+            if not edge.form.tag.is_unknown
+        ]
+        if readings:
+            table[word] = readings
+    return table
+
+
+def dictionary_notice() -> str:
+    """The dictionary's identity and licence, which must travel with its data.
+
+    Every published inflected form is derived from it, and its 2-clause BSD
+    licence requires the copyright notice, conditions and disclaimer with any
+    redistribution in binary form.
+    """
+    instance = _morfeusz()
+    return f"{instance.dict_id()}\n\n{instance.dict_copyright().strip()}\n"
+
+
+def use_lexicon(table: dict[str, list[list[str]]] | None) -> None:
+    """Answer `analyse` from `table` instead of Morfeusz; `None` restores Morfeusz.
+
+    Called only on a phone, where Morfeusz does not exist.
+    """
+    global _lexicon
+    _lexicon = table
 
 
 def analyses(token: str) -> tuple[Form, ...]:
@@ -257,5 +332,7 @@ __all__ = [
     "cell",
     "forms",
     "is_known",
+    "lexicon",
     "paradigm_roundtrips",
+    "use_lexicon",
 ]

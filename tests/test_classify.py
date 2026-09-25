@@ -90,6 +90,56 @@ def test_golden_corpus_meets_the_gate():
     )
 
 
+@pytest.fixture(scope="module")
+def phone_word_list():
+    """The word list a phone grades with, built as the content build builds it:
+    from the course's lemmas and every token of the built content."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from pl import models
+    from pl.content import frames, ingest
+    from scripts.build_site import content_surfaces, course_lemmas
+
+    engine = create_engine("sqlite://", future=True)
+    models.Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, future=True, expire_on_commit=False)()
+    try:
+        ingest.ingest_all(session)
+        frames.build(session)
+        surfaces = content_surfaces(session)
+    finally:
+        session.close()
+        engine.dispose()
+    return morph.lexicon(course_lemmas(), surfaces)
+
+
+def test_golden_corpus_meets_the_gate_with_the_phone_word_list(phone_word_list):
+    """The same gate, graded as a phone grades: no Morfeusz, only the word list.
+
+    The one difference it may cost is a real word outside the course read as not
+    a Polish word — `ojca` for `matka` goes from LEXICAL to UNANALYSABLE — and the
+    gate has to hold with it.
+    """
+    morph.use_lexicon(phone_word_list)
+    try:
+        results = _run()
+    finally:
+        morph.use_lexicon(None)
+
+    overall = sum(got == case["expect"] for case, got in results) / len(results)
+    per_class: dict[str, list[bool]] = defaultdict(list)
+    for case, got in results:
+        per_class[case["expect"]].append(got == case["expect"])
+    below = {
+        cls: round(sum(hits) / len(hits), 3)
+        for cls, hits in sorted(per_class.items())
+        if sum(hits) / len(hits) < MIN_CLASS_ACCURACY
+    }
+    assert overall >= MIN_OVERALL_ACCURACY, f"overall {overall:.1%}"
+    assert not below, f"classes below {MIN_CLASS_ACCURACY:.0%}: {below}"
+
+
 # ------------------------------------------- criteria the corpus alone misses
 
 
