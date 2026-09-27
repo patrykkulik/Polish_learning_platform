@@ -27,7 +27,7 @@ from sqlalchemy.exc import OperationalError
 
 from pl import audio
 from pl import course
-from pl import db as database
+from pl import db as database  # noqa: F401 — tests patch its session factory here
 # The tests patch the composer through this name, and import the rest from here,
 # as does `scripts/journey_sim.py`. They live in `pl.course` now.
 from pl import session as composer  # noqa: F401
@@ -39,8 +39,6 @@ from pl.course import (  # noqa: F401
     expected_slot,
     grade_item,
 )
-from pl.domain import AUDIBLE
-from pl.models import Item
 
 log = logging.getLogger(__name__)
 
@@ -96,17 +94,11 @@ def item_audio(item_id: int, speed: str = "normal"):
     Deliberately a separate endpoint rather than a field on the item: the
     session payload must never carry the sentence for a dictation item, because
     the sentence is the answer. The learner gets a URL that returns sound.
+
+    What may be said is `course.speech_text`'s to decide, the rule a phone's
+    own voice follows too, so the two cannot drift apart.
     """
-    if not audio.available():
-        raise HTTPException(503, "no speech synthesiser on this machine")
-    db = database.session()
-    try:
-        item = db.get(Item, item_id)
-        if item is None or item.exercise_type not in AUDIBLE:
-            raise HTTPException(404, "no audio for this item")
-        return _speak(item.expected_answer, speed, f"item {item_id}")
-    finally:
-        db.close()
+    return _speak(course.speech_text(item_id)["text"], speed, f"item {item_id}")
 
 
 @app.get("/api/audio/{item_id}/option/{index}")
@@ -115,19 +107,12 @@ def option_audio(item_id: int, index: int, speed: str = "normal"):
 
     The option is taken from the item by position, never as text from the
     request: the endpoint can say what the screen already shows and nothing
-    else — least of all a dictation sentence, which has no options.
+    else — least of all a dictation sentence, which has no options. The rule
+    is `course.speech_text`'s, as for `item_audio`.
     """
-    if not audio.available():
-        raise HTTPException(503, "no speech synthesiser on this machine")
-    db = database.session()
-    try:
-        item = db.get(Item, item_id)
-        options = (item.options_json or []) if item is not None else []
-        if not 0 <= index < len(options):
-            raise HTTPException(404, "no such option")
-        return _speak(options[index], speed, f"option {index} of item {item_id}")
-    finally:
-        db.close()
+    return _speak(
+        course.speech_text(item_id, index)["text"], speed, f"option {index} of item {item_id}"
+    )
 
 
 def _speak(text: str, speed: str, what: str) -> FileResponse:

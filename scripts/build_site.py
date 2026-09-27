@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -265,6 +266,8 @@ def assemble(out: Path, base: str = "/") -> dict[str, str]:
         ),
     }
     shutil.copytree(PACKAGE / "static", out / "static", ignore=shutil.ignore_patterns(*APP))
+    static = out / "static"
+    version = _digest(static, sorted(p for p in static.rglob("*") if p.is_file()))
     shutil.copy2(NOTICE, out / "NOTICE.txt")
     (out / "site.json").write_text(json.dumps(names, indent=2) + "\n", encoding="utf-8")
 
@@ -279,7 +282,7 @@ def assemble(out: Path, base: str = "/") -> dict[str, str]:
         html = (PACKAGE / "templates" / template).read_text(encoding="utf-8")
         path = out / target
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_page(html, base, names), encoding="utf-8")
+        path.write_text(_page(html, base, names, version), encoding="utf-8")
     return names
 
 
@@ -295,11 +298,7 @@ def _publish_app(out: Path) -> str:
     files = sorted(
         path for folder in APP for path in (PACKAGE / "static" / folder).rglob("*") if path.is_file()
     )
-    digest = hashlib.sha256()
-    for path in files:
-        digest.update(path.relative_to(PACKAGE / "static").as_posix().encode("utf-8") + b"\0")
-        digest.update(path.read_bytes())
-    name = f"app.{digest.hexdigest()[:12]}"
+    name = f"app.{_digest(PACKAGE / 'static', files)}"
     for path in files:
         target = out / name / path.relative_to(PACKAGE / "static")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -307,12 +306,26 @@ def _publish_app(out: Path) -> str:
     return name
 
 
-def _page(html: str, base: str, stamp: dict[str, str]) -> str:
+def _digest(root: Path, files: list[Path]) -> str:
+    """Twelve hex digits of the files' paths under `root` and their contents."""
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def _page(html: str, base: str, stamp: dict[str, str], version: str) -> str:
     """A template as the static site serves it.
 
     The base becomes the site's path, the manifest makes it a Home Screen app,
     and `device.js` follows `common.js`, carrying the names of the files this
     deploy was built with.
+
+    Every script and the stylesheet are asked for by `version`, the digest of
+    this deploy's `static/`. Pages ignores the query, but a browser caches each
+    address apart, so a page never runs another deploy's scripts for the ten
+    minutes Pages lets it keep them. The manifest keeps one address.
     """
     if html.count(BASE_TAG) != 1 or html.count(COMMON_SCRIPT) != 1:
         raise ValueError("a template has lost its <base> or its common.js script")
@@ -321,9 +334,10 @@ def _page(html: str, base: str, stamp: dict[str, str]) -> str:
         f'<base href="{base}">\n<link rel="manifest" href="static/manifest.webmanifest">',
     )
     attributes = " ".join(f'data-{key}="{value}"' for key, value in sorted(stamp.items()))
-    return html.replace(
+    html = html.replace(
         COMMON_SCRIPT, f'{COMMON_SCRIPT}\n<script src="static/device.js" {attributes}></script>'
     )
+    return re.sub(r'((?:src|href)="static/[^"?]+\.(?:js|css))"', rf'\1?v={version}"', html)
 
 
 # ------------------------------------------------------------------ command line

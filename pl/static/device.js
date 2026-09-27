@@ -203,15 +203,13 @@
       download(names.concepts).then((res) => res.json()),
       polishVoice(),
     ]);
-    phone = module;
-    voice = found;
 
     // The phone only ever installs the content file `site.json` names, and
     // fetches it only when that is not the one it already has.
     const ledger =
       saved.content === names.content ? null : new Uint8Array(await (await download(names.content)).arrayBuffer());
     database = saved.database ? new SQL.Database(saved.database) : new SQL.Database();
-    installed = phone.start({
+    installed = module.start({
       SQL,
       database,
       ledger,
@@ -220,14 +218,33 @@
       lexicon,
       concepts,
       zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      voice: voice !== null,
+      voice: found !== null,
     });
+    // Only now is there a runtime to answer the page and its play buttons.
+    phone = module;
+    voice = found;
     if (!saved.database || installed !== saved.content) await save();
   }
 
-  const ready = boot();
-  // A failure is reported by the first request that waits on it.
-  ready.catch(() => {});
+  /* Start-up, and start-up again after a failure: a download that failed once,
+   * on a first visit or after a content update, need not strand the page, whose
+   * "Try again" then asks again. */
+  function start() {
+    const attempt = boot();
+    // A failure is reported by the first request that waits on it.
+    attempt.catch(() => {});
+    return attempt;
+  }
+
+  let ready = start();
+
+  /* A page the browser brings back from its back/forward cache still holds the
+   * database as it was when the page was left, and its next save would
+   * overwrite whatever pages opened since have saved. Reloaded, it restores
+   * what was saved. */
+  addEventListener("pageshow", (event) => {
+    if (event.persisted) location.reload();
+  });
 
   /* Speaks what the play button at `url` says. Synchronous from the tap to
    * `speak()`, because iOS starts speech only from a user's gesture: the text
@@ -248,9 +265,11 @@
   };
 
   request = async function (url, options) {
+    if (ready === null) ready = start();
     try {
       await ready;
     } catch (e) {
+      ready = null;
       throw new Error(
         e && e.message ? `The app could not start on this phone: ${e.message}` : "The app could not start on this phone."
       );

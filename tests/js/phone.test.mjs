@@ -98,6 +98,57 @@ test("the same content again installs nothing, and a new one keeps the learner's
   assert.equal(one(sql, "SELECT count(*) FROM app_user"), 1);
 });
 
+/* The committed ledger as newer models would build it: one statement more. */
+function ledgerWith(statement) {
+  const shipped = new SQL.Database(new Uint8Array(LEDGER));
+  try {
+    shipped.exec(statement);
+    return shipped.export();
+  } finally {
+    shipped.close();
+  }
+}
+
+const columnsOf = (sql, table) => sql.exec(`PRAGMA table_info("${table}")`)[0].values.map((row) => row[1]);
+
+/* A phone with one answer behind it: at least one card and one attempt. */
+function phoneWithProgress() {
+  const { sql } = newPhone();
+  const session = JSON.parse(phone.handle("GET", "api/session?limit=20").body);
+  phone.handle("POST", "api/submit", JSON.stringify({ item_id: session.items[0].id, answer: "x" }));
+  const cards = sql.exec("SELECT * FROM card ORDER BY id")[0].values;
+  assert.ok(cards.length);
+  return { sql, cards };
+}
+
+test("a content update gives a learner table its new nullable column, and keeps its rows", () => {
+  const { sql, cards } = phoneWithProgress();
+  const newer = ledgerWith("ALTER TABLE card ADD COLUMN note TEXT");
+
+  const update = { SQL, database: sql, ledger: newer, lexicon: LEXICON, concepts: NO_LESSONS, zone: "UTC" };
+  assert.equal(phone.start({ ...update, contentHash: "second", installedHash: "first" }), "second");
+
+  assert.equal(columnsOf(sql, "card").at(-1), "note");
+  const kept = sql.exec("SELECT * FROM card ORDER BY id")[0].values;
+  assert.deepEqual(kept.map((row) => row.slice(0, -1)), cards);
+  assert.ok(kept.every((row) => row.at(-1) === null));
+  assert.equal(one(sql, "SELECT count(*) FROM attempt"), 1);
+  assert.equal(phone.handle("GET", "api/session?limit=20").status, 200);
+});
+
+test("a content update refuses a NOT NULL learner column, and changes no learner table", () => {
+  const { sql, cards } = phoneWithProgress();
+  const columns = columnsOf(sql, "card");
+  const newer = ledgerWith("ALTER TABLE card ADD COLUMN level INTEGER NOT NULL DEFAULT 0");
+
+  const update = { SQL, database: sql, ledger: newer, lexicon: LEXICON, concepts: NO_LESSONS, zone: "UTC" };
+  assert.throws(() => phone.start({ ...update, contentHash: "second", installedHash: "first" }), /needs a migration/);
+
+  assert.deepEqual(columnsOf(sql, "card"), columns);
+  assert.deepEqual(sql.exec("SELECT * FROM card ORDER BY id")[0].values, cards);
+  assert.equal(one(sql, "SELECT count(*) FROM attempt"), 1);
+});
+
 test("a phone with a voice says a listening item's sentence and an option by position, nothing else", () => {
   const { sql } = newPhone("UTC", true);
   const [listening, sentence] = sql.exec(

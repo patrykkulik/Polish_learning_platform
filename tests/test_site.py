@@ -199,11 +199,45 @@ def test_every_page_has_the_base_the_manifest_and_the_phones_runtime(site):
         html = page.read_text(encoding="utf-8")
         assert '<base href="/polish-learning-platform/">' in html, page
         assert '<link rel="manifest" href="static/manifest.webmanifest">' in html, page
-        tag = re.search(r'<script src="static/device\.js" ([^>]*)></script>', html)
+        tag = re.search(r'<script src="static/device\.js\?v=\w+" ([^>]*)></script>', html)
         assert tag, page
         stamped = dict(re.findall(r'data-(\w+)="([^"]+)"', tag.group(1)))
         assert stamped == names, page
         assert html.index("static/common.js") < html.index("static/device.js"), page
+
+
+def _versions(out: Path) -> set[str]:
+    """The version every page asks for its scripts and stylesheet by."""
+    versions = set()
+    for page in _pages(out):
+        html = page.read_text(encoding="utf-8")
+        assets = re.findall(r'(?:src|href)="static/([^"]+\.(?:js|css)(?:\?[^"]*)?)"', html)
+        assert assets, page
+        for asset in assets:
+            assert "?v=" in asset, f"{page.relative_to(out)}: static/{asset} is not versioned"
+            versions.add(asset.split("?v=", 1)[1])
+        assert 'href="static/manifest.webmanifest"' in html, page
+    return versions
+
+
+def test_a_page_asks_for_its_own_deploys_scripts(site, tmp_path, monkeypatch):
+    """Pages lets a browser keep a file ten minutes, and the page scripts have
+    fixed names. Each page asks for them by one version, which a change to any of
+    them changes, so a fresh page never runs a cached older `device.js` against
+    a newer app. The manifest keeps one address."""
+    out, names = site
+    (version,) = _versions(out)
+
+    package = tmp_path / "pl"
+    shutil.copytree(build_site.PACKAGE / "static", package / "static")
+    shutil.copytree(build_site.PACKAGE / "templates", package / "templates")
+    with (package / "static" / "common.js").open("a", encoding="utf-8") as handle:
+        handle.write("\n/* another deploy */\n")
+    monkeypatch.setattr(build_site, "PACKAGE", package)
+    changed = build_site.assemble(tmp_path / "_site", "/polish-learning-platform")
+
+    assert _versions(tmp_path / "_site") != {version}
+    assert changed["app"] == names["app"]
 
 
 def test_every_file_a_page_names_exists_and_site_json_names_the_same(site):

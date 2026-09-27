@@ -198,6 +198,10 @@ flowchart LR
     one.
   - A failed save rejects with a message the page shows. The change stays in memory, and the next
     successful save stores it.
+- Each page holds its own copy of the database. A page the browser brings back from its
+  back/forward cache reloads first, so it never saves a copy older than the one saved since.
+- A start-up that fails is started again by the page's next call, so its "Try again" can recover
+  from a download that failed once.
 - One learner per phone, created with the phone's IANA timezone, or UTC for a zone the browser does
   not know.
 - `device.js` calls `navigator.storage.persist()`.
@@ -305,7 +309,10 @@ flowchart LR
 - `_site/` holds:
   - `index.html`, `progress/index.html` and `grammar/index.html`, plus `grammar/<key>/index.html`
     for every key in `data/concepts.yaml`, because Pages has no routing;
-  - `static/`: the page scripts, `device.js` and the manifest, plus `NOTICE.txt`;
+  - `static/`: the page scripts, `device.js` and the manifest, plus `NOTICE.txt`. Pages ask for the
+    scripts and the stylesheet by the digest of `static/` (`static/common.js?v=<digest>`): Pages
+    ignores the query and a browser caches each address apart, so a fresh page never runs an older
+    deploy's cached scripts. The manifest keeps one address;
   - `app.<hash>/`: the runtime modules, `sql.js` and its licence, in a folder named by the hash of
     its contents, so one deploy's modules never import another's;
   - `content.<hash>.db`, `lexicon.<hash>.json` and `concepts.<hash>.json`;
@@ -340,7 +347,8 @@ flowchart LR
 - `pl.audio.use_device_voice(bool)` sets a flag that `available()` checks before its cached probe,
   and clears that cache. The JavaScript mirrors the flag from the phone's voice list.
 - `speech_text(item_id, index=None)` keeps the guards of today's audio routes: listening items only,
-  and options by position. `pl.course` and the JavaScript runtime both provide it.
+  and options by position. `pl.course` and the JavaScript runtime both provide it, and the local
+  server's audio routes take their text from it, so the rule exists once in the Python.
   - On a phone, `GET /api/audio/{item_id}` and `GET /api/audio/{item_id}/option/{index}` answer with
     it: `{"text": ...}`, not a sound. `pl.device` routes them as `phone.js` does.
   - Like the audio routes, it refuses (503) when there is no voice to speak.
@@ -540,6 +548,18 @@ flowchart LR
     nothing else: tested through `pl.device` and through `phone.js`.
   - The journey asks what every play button it meets would say, and the two sides agree.
   - The suite passed: 574 tests, and 24 JavaScript unit tests.
+- The two-pass review of the change (2026-09-25) found nothing Required. The owner had its five
+  Recommended findings fixed:
+  - P2-F1: a page restored from the back/forward cache reloads before it can save. Checked in
+    Chromium with a restored-page event; its own Back gave a fresh load, so Safari is listed below.
+  - P1-F1: page scripts carry the deploy's `static/` digest. A test changes a script and sees every
+    page's version change, while the app folder's name does not.
+  - P1-F4: a failed start-up is retried by the next call. Checked in Chromium: with the word list
+    missing, start-up failed; once it was back, "Try again" served the session without a reload.
+  - P1-F2: the local audio routes take their text from `course.speech_text`; `test_api`'s audio
+    tests pass unchanged.
+  - P2-F3: `phone.test.mjs` adds a nullable learner column on a content update, keeping the rows,
+    and refuses a NOT NULL one, changing nothing. Both tests fail when those branches are broken.
 - `ts-fsrs` 5.4.2 against `fsrs` 6.3.2, from both libraries' source:
   - `ts-fsrs` counts elapsed days as UTC calendar days (`dateDiffInDays`); `fsrs` counts whole
     24-hour periods (`timedelta.days`, `scheduler.py:269`).
@@ -603,6 +623,8 @@ flowchart LR
 - [ ] Whether progress started in a Safari tab carries into the Home Screen app on iOS.
 - [ ] Installed from the progress page, the Home Screen app stays in the app when opening the session.
 - [ ] A failed save shows an error. Force one from Safari's Web Inspector.
+- [ ] On the iPhone, swiping back to a session page after answering on a newer one reloads it, and
+      the newer answers are kept.
 - [ ] On the real Pages site, a stale page after a deploy reloads once and shows no error.
 - [ ] A real deploy of changed content, applied to a phone that already has progress.
 - [x] A Polish `speechSynthesis` voice exists on the owner's iPhone. Speech starts from a tap, the
