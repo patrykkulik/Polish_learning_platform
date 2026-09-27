@@ -560,6 +560,15 @@ flowchart LR
     tests pass unchanged.
   - P2-F3: `phone.test.mjs` adds a nullable learner column on a content update, keeping the rows,
     and refuses a NOT NULL one, changing nothing. Both tests fail when those branches are broken.
+- The first push and deploy (2026-09-27) to https://patrykkulik.github.io/Polish_learning_platform/:
+  - `main` was rewritten with `git filter-repo --mailmap` in a fresh clone. Its 39 commits match the
+    old ones commit by commit, in tree and subject. Every author and committer email is the noreply
+    address, and neither personal address appears in any file or commit message.
+  - The deploy's `check-live` got a 404 for `site.json` and passed: "nothing is deployed yet, so no
+    published id can break".
+  - In Chromium, on `grammar/VOCAB_GENDER/`, a page below the `<base href>`: its links resolve
+    against the base, and every file it loads answers 200. `location.assign('./?more=1')` lands on
+    the session page, not on `grammar/VOCAB_GENDER/?more=1`.
 - `ts-fsrs` 5.4.2 against `fsrs` 6.3.2, from both libraries' source:
   - `ts-fsrs` counts elapsed days as UTC calendar days (`dateDiffInDays`); `fsrs` counts whole
     24-hour periods (`timedelta.days`, `scheduler.py:269`).
@@ -630,9 +639,10 @@ flowchart LR
 - [x] A Polish `speechSynthesis` voice exists on the owner's iPhone. Speech starts from a tap, the
       slow rate is audibly slower, and the silent switch mutes it. See "Validation Performed".
 - [ ] The same on an Android phone, in Chrome.
-- [ ] Relative links and `location.assign('./?more=1')` resolve against `<base href>` on Pages.
-- [ ] On the pushed `main`, `git log --format='%ae%n%ce' | sort -u` shows only the noreply address,
+- [x] Relative links and `location.assign('./?more=1')` resolve against `<base href>` on Pages.
+      Checked in Chromium; see "Validation Performed".
+- [x] On the pushed `main`, `git log --format='%ae%n%ce' | sort -u` shows only the noreply address,
       and neither personal address appears in any file or commit message.
 - [ ] A push that fast-forwards two commits, the first of which renumbers the ledger, fails
       `check-ids`. So does a push made on top of a commit whose check failed.
-- [ ] The first deploy passes `check-ids` on a 404 for `site.json`.
+- [x] The first deploy passes `check-ids` on a 404 for `site.json`.
